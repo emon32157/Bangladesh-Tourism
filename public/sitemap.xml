@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <!-- Homepage -->
+  <url>
+    <loc>https://bdtourismboard.netlify.app/</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://bdtourismboard.netlify.app/?lang=en" />
+    <xhtml:link rel="alternate" hreflang="bn" href="https://bdtourismboard.netlify.app/?lang=bn" />
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1596895111956-bf1cf0599ce5?auto=format&amp;fit=crop&amp;w=1200&amp;h=630&amp;q=80</image:loc>
+      <image:title>Explore Beautiful Bangladesh Tourism</image:title>
+      <image:caption>Beaches, Rivers, Hills and Heritage of Bangladesh</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Key Sections -->
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?section=destinations</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?section=heritage</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?section=stories</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?section=experiences</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?section=festivals</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?section=gallery</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?section=gis-map</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?section=districts</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Top Tourist Destinations -->
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-30</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1596895111956-bf1cf0599ce5?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Cox's Bazar Sea Beach - Bangladesh Tourism</image:title>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-52</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Sundarbans Mangrove Reserve - Bangladesh Tourism</image:title>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-33</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1628155930542-3c7a64e2c833?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Sajek Valley Queen of Hills - Bangladesh Tourism</image:title>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-41</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1588083949404-c4f1ed1323b3?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Sreemangal Tea Estates - Bangladesh Tourism</image:title>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-31</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-32</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-45</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1588083949404-c4f1ed1323b3?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Paharpur Somapura Mahavihara UNESCO Heritage - Bangladesh Tourism</image:title>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-53</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-1</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-2</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?destination=spot-63</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- Editorial Stories -->
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?story=story-jamdani</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=1000&amp;auto=format&amp;fit=crop&amp;q=80</image:loc>
+      <image:title>The Gossamer Thread: Reviving Bengal's Imperial Jamdani</image:title>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?story=story-sundarbans</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=1000&amp;auto=format&amp;fit=crop&amp;q=80</image:loc>
+      <image:title>Tides, Tigers, and Bonbibi: Living on the Edge of the Mangroves</image:title>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?story=story-flavors</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=1000&amp;auto=format&amp;fit=crop&amp;q=80</image:loc>
+      <image:title>A Culinary Cartography: From Coastal Hilsa to Seven-Layer Tea</image:title>
+    </image:image>
+  </url>
+
+  <!-- Cultural Experiences & Festivals -->
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?experience=exp-1</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?experience=exp-2</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://bdtourismboard.netlify.app/?festival=pohela-boishakh</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.75</priority>
+  </url>
+
+</urlset>

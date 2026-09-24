@@ -1,0 +1,189 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access control (admin vs user)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "photoURL": { "type": "string", "maxLength": 1024 },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "isAnonymous": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "lastLoginAt": { "type": "number" }
+      },
+      "required": ["uid", "role"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "System administrator mapping for fast RBAC validation",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "assignedAt": { "type": "number" }
+      },
+      "required": ["uid"]
+    },
+    "Destination": {
+      "title": "Destination",
+      "description": "Tourism destination record managed exclusively by Admins",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "titleBn": { "type": "string", "maxLength": 256 },
+        "division": { "type": "string", "maxLength": 64 },
+        "category": { "type": "string", "maxLength": 64 },
+        "image": { "type": "string", "maxLength": 2048 },
+        "gallery": { "type": "array", "items": { "type": "string" } },
+        "summary": { "type": "string", "maxLength": 1000 },
+        "description": { "type": "string", "maxLength": 5000 },
+        "rating": { "type": "number" },
+        "bestSeason": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "title", "titleBn", "division"]
+    },
+    "Experience": {
+      "title": "Experience",
+      "description": "Curated cultural and nature experience in Bangladesh",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "titleBn": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "maxLength": 64 },
+        "duration": { "type": "string", "maxLength": 64 },
+        "icon": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "location": { "type": "string", "maxLength": 256 },
+        "tag": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "title", "category"]
+    },
+    "Festival": {
+      "title": "Festival",
+      "description": "Cultural, religious or folk celebration in Bangladesh",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "titleBn": { "type": "string", "maxLength": 256 },
+        "date": { "type": "string", "maxLength": 128 },
+        "location": { "type": "string", "maxLength": 256 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "emoji": { "type": "string", "maxLength": 16 },
+        "badge": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "title", "date"]
+    },
+    "EditorialStory": {
+      "title": "EditorialStory",
+      "description": "Bengal Chronicle narrative travel essay and cultural lore",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "titleBn": { "type": "string", "maxLength": 256 },
+        "author": { "type": "string", "maxLength": 128 },
+        "readTime": { "type": "string", "maxLength": 64 },
+        "category": { "type": "string", "maxLength": 64 },
+        "date": { "type": "string", "maxLength": 64 },
+        "image": { "type": "string", "maxLength": 2048 },
+        "gallery": { "type": "array", "items": { "type": "string" } },
+        "excerpt": { "type": "string", "maxLength": 1000 },
+        "pullQuote": { "type": "string", "maxLength": 500 },
+        "likesCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] }
+      },
+      "required": ["id", "title", "author", "image"]
+    },
+    "CommunityPost": {
+      "title": "CommunityPost",
+      "description": "Community photo and story published by travelers and administrators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "caption": { "type": "string", "maxLength": 2000 },
+        "location": { "type": "string", "maxLength": 256 },
+        "division": { "type": "string", "maxLength": 64 },
+        "imageUrl": { "type": "string", "maxLength": 2048 },
+        "likesCount": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] }
+      },
+      "required": ["id", "userId", "userName", "title", "imageUrl"]
+    },
+    "Subscriber": {
+      "title": "Subscriber",
+      "description": "Newsletter email subscriber record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "status": { "type": "string", "enum": ["active", "unsubscribed"] },
+        "createdAt": { "type": "number" },
+        "source": { "type": "string", "maxLength": 128 },
+        "language": { "type": "string", "maxLength": 10 }
+      },
+      "required": ["email", "createdAt", "status"]
+    },
+    "UserReport": {
+      "title": "UserReport",
+      "description": "User feedback, corrections, or problem reports",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 256 },
+        "description": { "type": "string", "maxLength": 3000 },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "resolved"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "type", "description", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile with assigned RBAC role"
+    },
+    "/admins/{userId}": {
+      "schema": "Admin",
+      "description": "Designated administrator lookup directory"
+    },
+    "/destinations/{destinationId}": {
+      "schema": "Destination",
+      "description": "Tourism destinations catalog"
+    },
+    "/experiences/{expId}": {
+      "schema": "Experience",
+      "description": "Curated travel and cultural experiences"
+    },
+    "/festivals/{festivalId}": {
+      "schema": "Festival",
+      "description": "Cultural and seasonal celebrations"
+    },
+    "/editorial_stories/{storyId}": {
+      "schema": "EditorialStory",
+      "description": "Editorial Chronicle travel essays"
+    },
+    "/community_posts/{postId}": {
+      "schema": "CommunityPost",
+      "description": "Showcase traveler posts and photos"
+    },
+    "/subscribers/{subscriberId}": {
+      "schema": "Subscriber",
+      "description": "Newsletter email subscriptions"
+    },
+    "/user_reports/{reportId}": {
+      "schema": "UserReport",
+      "description": "User error reports and content suggestions"
+    }
+  }
+}

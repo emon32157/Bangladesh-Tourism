@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // RBAC: Check if user is registered as admin
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'banngladeshnews24@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // Users collection: users and guests can read and write user profile data
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Admins registry collection
+    match /admins/{adminId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Destinations: Public read, write allowed for sync and management
+    match /destinations/{destinationId} {
+      allow read, write: if true;
+    }
+
+    // Experiences: Public read, write allowed for sync and management
+    match /experiences/{expId} {
+      allow read, write: if true;
+    }
+
+    // Festivals: Public read, write allowed for sync and management
+    match /festivals/{festivalId} {
+      allow read, write: if true;
+    }
+
+    // Editorial Stories: Public read, write allowed
+    match /editorial_stories/{storyId} {
+      allow read, write: if true;
+    }
+
+    // Stories alias fallback
+    match /stories/{storyId} {
+      allow read, write: if true;
+    }
+
+    // Community Posts: Public read, write allowed
+    match /community_posts/{postId} {
+      allow read, write: if true;
+    }
+
+    // Social Comments: Public read, write allowed
+    match /social_comments/{commentId} {
+      allow read, write: if true;
+    }
+
+    // Saved Items / Bookmarks
+    match /saved_items/{savedId} {
+      allow read, write: if true;
+    }
+
+    // Newsletter Subscribers
+    match /subscribers/{subscriberId} {
+      allow read, write: if true;
+    }
+
+    // User Reports
+    match /user_reports/{reportId} {
+      allow read, write: if true;
+    }
+
+    // Catch-all fallback for any other app collection
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

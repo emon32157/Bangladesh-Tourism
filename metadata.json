@@ -1,0 +1,8 @@
+{
+  "name": "Bangladesh Tourism | Explore Beautiful Bangladesh",
+  "description": "Explore Bangladesh Tourism and discover beautiful destinations, beaches, rivers, hills, forests, historical places, cultural heritage, tourist attractions and travel guides across Bangladesh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
