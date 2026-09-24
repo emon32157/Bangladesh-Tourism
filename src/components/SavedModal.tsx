@@ -32,9 +32,10 @@ export const SavedModal: React.FC<SavedModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'destinations' | 'stories' | 'posts'>('all');
 
-  const savedDestinations = allDestinations.filter((d) => savedIds.includes(d.id));
-  const savedStories = allStories.filter((s) => savedIds.includes(s.id));
-  const savedPosts = allPosts.filter((p) => savedIds.includes(p.id));
+  const safeSavedIds = savedIds || [];
+  const savedDestinations = (allDestinations || []).filter((d) => d && safeSavedIds.includes(d.id));
+  const savedStories = (allStories || []).filter((s) => s && safeSavedIds.includes(s.id));
+  const savedPosts = (allPosts || []).filter((p) => p && safeSavedIds.includes(p.id));
 
   const totalSaved = savedDestinations.length + savedStories.length + savedPosts.length;
 
@@ -107,7 +108,7 @@ export const SavedModal: React.FC<SavedModalProps> = ({
             <div className="space-y-3">
               {/* Destinations */}
               {(activeTab === 'all' || activeTab === 'destinations') &&
-                savedDestinations.map((dest) => (
+                savedDestinations.filter(Boolean).map((dest) => (
                   <div
                     key={`dest-${dest.id}`}
                     className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-[#D8D0BC] hover:border-[#DE9B2E] transition-all gap-4 shadow-2xs"
@@ -120,9 +121,9 @@ export const SavedModal: React.FC<SavedModalProps> = ({
                       className="flex items-center gap-3.5 flex-1 cursor-pointer"
                     >
                       <img
-                        src={dest.image}
-                        alt={dest.title}
-                        className="w-14 h-14 rounded-xl object-cover"
+                        src={dest.image || 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=600&q=80'}
+                        alt={dest.title || 'Destination'}
+                        className="w-14 h-14 rounded-xl object-cover bg-neutral-100"
                         referrerPolicy="no-referrer"
                       />
                       <div>
@@ -132,7 +133,7 @@ export const SavedModal: React.FC<SavedModalProps> = ({
                           </span>
                         </div>
                         <h4 className="font-bold text-sm text-[#0A2A21]">
-                          {language === 'en' ? dest.title : dest.titleBn}
+                          {language === 'en' ? dest.title : dest.titleBn || dest.title}
                         </h4>
                         <p className="text-xs text-[#4B554E]">{dest.division} • {dest.duration}</p>
                       </div>
@@ -162,7 +163,7 @@ export const SavedModal: React.FC<SavedModalProps> = ({
 
               {/* Stories */}
               {(activeTab === 'all' || activeTab === 'stories') &&
-                savedStories.map((story) => (
+                savedStories.filter(Boolean).map((story) => (
                   <div
                     key={`story-${story.id}`}
                     className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-[#D8D0BC] hover:border-[#DE9B2E] transition-all gap-4 shadow-2xs"
@@ -175,9 +176,9 @@ export const SavedModal: React.FC<SavedModalProps> = ({
                       className="flex items-center gap-3.5 flex-1 cursor-pointer"
                     >
                       <img
-                        src={story.image}
-                        alt={story.title}
-                        className="w-14 h-14 rounded-xl object-cover"
+                        src={story.image || 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=600&q=80'}
+                        alt={story.title || 'Story'}
+                        className="w-14 h-14 rounded-xl object-cover bg-neutral-100"
                         referrerPolicy="no-referrer"
                       />
                       <div>
@@ -188,7 +189,7 @@ export const SavedModal: React.FC<SavedModalProps> = ({
                           <span className="text-[10px] text-[#6B756E]">{story.category}</span>
                         </div>
                         <h4 className="font-bold text-sm text-[#0A2A21] line-clamp-1">
-                          {language === 'en' ? story.title : story.titleBn}
+                          {language === 'en' ? story.title : story.titleBn || story.title}
                         </h4>
                         <p className="text-xs text-[#4B554E]">{story.author} • {story.readTime}</p>
                       </div>
@@ -218,7 +219,7 @@ export const SavedModal: React.FC<SavedModalProps> = ({
 
               {/* Community Posts */}
               {(activeTab === 'all' || activeTab === 'posts') &&
-                savedPosts.map((post) => (
+                savedPosts.filter(Boolean).map((post) => (
                   <div
                     key={`post-${post.id}`}
                     className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-[#D8D0BC] hover:border-[#DE9B2E] transition-all gap-4 shadow-2xs"
@@ -231,9 +232,9 @@ export const SavedModal: React.FC<SavedModalProps> = ({
                       className="flex items-center gap-3.5 flex-1 cursor-pointer"
                     >
                       <img
-                        src={post.imageUrl}
-                        alt={post.title}
-                        className="w-14 h-14 rounded-xl object-cover"
+                        src={post.imageUrl || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80'}
+                        alt={post.title || 'Community Post'}
+                        className="w-14 h-14 rounded-xl object-cover bg-neutral-100"
                         referrerPolicy="no-referrer"
                       />
                       <div>

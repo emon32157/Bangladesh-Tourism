@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, useNavigate, useLocation } from 'react-router-dom';
 import { motion, useScroll, useSpring, AnimatePresence } from 'motion/react';
 import { ArrowUp } from 'lucide-react';
 import { Header } from './components/Header';
@@ -31,6 +32,7 @@ import { GisMapSection } from './components/GisMapSection';
 import { DistrictsSection } from './components/DistrictsSection';
 import { RecentShowcaseSlider } from './components/RecentShowcaseSlider';
 import { NewsSection } from './components/NewsSection';
+import { InfoPageModal, InfoPageType } from './components/InfoPageModal';
 
 import {
   auth,
@@ -48,8 +50,8 @@ import {
   EDITORIAL_STORIES,
   SEED_COMMUNITY_POSTS,
 } from './data/bangladeshData';
+import { BANGLADESH_DISTRICTS } from './data/bangladeshDistricts';
 import { Destination, Experience, Festival, EditorialStory, Language, CommunityPost, AppUser } from './types';
-import { parseUrlState, setUrlState, AppUrlState } from './lib/urlSync';
 import { syncFirebaseUserProfile, checkIsUserAdmin } from './lib/userRoles';
 import {
   subscribeToAllFirestoreData,
@@ -69,9 +71,25 @@ import {
   updateStorySeo,
   updateFestivalSeo,
   updateExperienceSeo,
+  updateDistrictSeo,
+  updateInfoPageSeo,
   updateSectionSeo,
   resetSeoToDefault,
 } from './lib/seo';
+import {
+  getDestinationSlug,
+  findDestinationBySlug,
+  getStorySlug,
+  findStoryBySlug,
+  getFestivalSlug,
+  findFestivalBySlug,
+  getExperienceSlug,
+  findExperienceBySlug,
+  getPostSlug,
+  findPostBySlug,
+  getDistrictSlug,
+  findDistrictBySlug,
+} from './lib/slugs';
 
 function dedupeById<T extends { id: string }>(items: T[]): T[] {
   const seen = new Set<string>();
@@ -82,7 +100,10 @@ function dedupeById<T extends { id: string }>(items: T[]): T[] {
   });
 }
 
-export default function App() {
+function MainAppContent() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [language, setLanguage] = useState<Language>('en');
   const [activeSection, setActiveSection] = useState<string>('hero');
 
@@ -166,6 +187,8 @@ export default function App() {
   const [selectedFestival, setSelectedFestival] = useState<Festival | null>(null);
   const [selectedExperience, setSelectedExperience] = useState<Experience | null>(null);
   const [selectedCommunityPostId, setSelectedCommunityPostId] = useState<string | null>(null);
+  const [infoPage, setInfoPage] = useState<InfoPageType | null>(null);
+
   const [isTripPlannerOpen, setIsTripPlannerOpen] = useState(false);
   const [tripPlannerPreselect, setTripPlannerPreselect] = useState<Destination | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -192,170 +215,319 @@ export default function App() {
     });
   }, [scrollY]);
 
-  const handleSelectDistrict = (districtName: string) => {
-    setSelectedDistrictFilter(districtName);
-    scrollToSection('gis-map');
-  };
-
-  // URL state synchronization and deep linking on initial load and popstate
+  // Synchronize route pathname and search params with modal, filter, and SEO states
   useEffect(() => {
-    const applyUrlState = () => {
-      const urlState = parseUrlState();
+    const pathname = location.pathname;
+    const searchParams = new URLSearchParams(location.search);
 
-      if (urlState.lang === 'bn' || urlState.lang === 'en') {
-        setLanguage(urlState.lang as Language);
-      }
+    // Sync language if query param present
+    const langParam = searchParams.get('lang');
+    if (langParam === 'bn' || langParam === 'en') {
+      setLanguage(langParam as Language);
+    }
 
-      if (urlState.destinationId) {
-        const dest = destinations.find((d) => d.id === urlState.destinationId) || null;
+    // Legacy query params for backwards-compatibility deep links
+    const legacyDest = searchParams.get('destination');
+    const legacyStory = searchParams.get('story');
+    const legacyFest = searchParams.get('festival');
+    const legacyExp = searchParams.get('experience');
+    const legacyPost = searchParams.get('post');
+
+    // 1. Destination Route: /destination/:slug
+    if (pathname.startsWith('/destination/')) {
+      const slug = decodeURIComponent(pathname.replace('/destination/', '').trim());
+      const dest = findDestinationBySlug(destinations, slug);
+      if (dest) {
         setSelectedDestination(dest);
-      } else {
-        setSelectedDestination(null);
+        updateDestinationSeo(dest, language);
       }
+    } else if (legacyDest) {
+      const dest = findDestinationBySlug(destinations, legacyDest);
+      if (dest) {
+        navigate(`/destination/${getDestinationSlug(dest, destinations)}`, { replace: true });
+        return;
+      }
+    } else {
+      setSelectedDestination(null);
+    }
 
-      if (urlState.storyId) {
-        const story = stories.find((s) => s.id === urlState.storyId) || null;
+    // 2. Post / Story Route: /post/:slug or /story/:slug
+    if (pathname.startsWith('/post/') || pathname.startsWith('/story/')) {
+      const slug = decodeURIComponent(pathname.replace(/^\/(post|story)\//, '').trim());
+      const story = findStoryBySlug(stories, slug);
+      if (story) {
         setSelectedStory(story);
-      } else {
-        setSelectedStory(null);
-      }
-
-      if (urlState.festivalId) {
-        const fest = festivals.find((f) => f.id === urlState.festivalId) || null;
-        setSelectedFestival(fest);
-      } else {
-        setSelectedFestival(null);
-      }
-
-      if (urlState.experienceId) {
-        const exp = experiences.find((e) => e.id === urlState.experienceId) || null;
-        setSelectedExperience(exp);
-      } else {
-        setSelectedExperience(null);
-      }
-
-      if (urlState.postId) {
-        setSelectedCommunityPostId(urlState.postId);
-      } else {
         setSelectedCommunityPostId(null);
-      }
-
-      // Views / Modals
-      setIsTripPlannerOpen(urlState.view === 'planner');
-      setIsSavedModalOpen(urlState.view === 'wishlist');
-      setIsSearchOpen(urlState.view === 'search');
-      setIsAuthModalOpen(urlState.view === 'auth');
-      setIsUploadModalOpen(urlState.view === 'upload');
-      setIsStorySubmitOpen(urlState.view === 'story-submit' || urlState.view === 'write-story');
-      setIsAdminOpen(urlState.view === 'admin');
-      setIsReportModalOpen(urlState.view === 'report');
-
-      if (urlState.section) {
-        setActiveSection(urlState.section);
-        const el = document.getElementById(urlState.section);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth' });
+        updateStorySeo(story, language);
+      } else {
+        const post = findPostBySlug(communityPosts, slug);
+        if (post) {
+          setSelectedCommunityPostId(post.id);
+          setSelectedStory(null);
         }
       }
-    };
-
-    applyUrlState();
-
-    const handlePopState = () => {
-      applyUrlState();
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [destinations, stories, festivals, experiences]);
-
-  // Dynamic SEO Synchronization
-  useEffect(() => {
-    if (selectedDestination) {
-      updateDestinationSeo(selectedDestination, language);
-    } else if (selectedStory) {
-      updateStorySeo(selectedStory, language);
-    } else if (selectedFestival) {
-      updateFestivalSeo(selectedFestival, language);
-    } else if (selectedExperience) {
-      updateExperienceSeo(selectedExperience, language);
-    } else if (activeSection && activeSection !== 'hero') {
-      updateSectionSeo(activeSection, language);
+    } else if (legacyStory) {
+      const story = findStoryBySlug(stories, legacyStory);
+      if (story) {
+        navigate(`/post/${getStorySlug(story, stories)}`, { replace: true });
+        return;
+      }
+    } else if (legacyPost) {
+      const post = findPostBySlug(communityPosts, legacyPost);
+      if (post) {
+        navigate(`/post/${getPostSlug(post, communityPosts)}`, { replace: true });
+        return;
+      }
     } else {
-      resetSeoToDefault(language);
+      setSelectedStory(null);
+      setSelectedCommunityPostId(null);
     }
-  }, [selectedDestination, selectedStory, selectedFestival, selectedExperience, activeSection, language]);
 
-  // Modal open/close actions that update browser URL
+    // 3. Festival Route: /festival/:slug
+    if (pathname.startsWith('/festival/')) {
+      const slug = decodeURIComponent(pathname.replace('/festival/', '').trim());
+      const fest = findFestivalBySlug(festivals, slug);
+      if (fest) {
+        setSelectedFestival(fest);
+        updateFestivalSeo(fest, language);
+      }
+    } else if (legacyFest) {
+      const fest = findFestivalBySlug(festivals, legacyFest);
+      if (fest) {
+        navigate(`/festival/${getFestivalSlug(fest, festivals)}`, { replace: true });
+        return;
+      }
+    } else {
+      setSelectedFestival(null);
+    }
+
+    // 4. Experience Route: /experience/:slug
+    if (pathname.startsWith('/experience/')) {
+      const slug = decodeURIComponent(pathname.replace('/experience/', '').trim());
+      const exp = findExperienceBySlug(experiences, slug);
+      if (exp) {
+        setSelectedExperience(exp);
+        updateExperienceSeo(exp, language);
+      }
+    } else if (legacyExp) {
+      const exp = findExperienceBySlug(experiences, legacyExp);
+      if (exp) {
+        navigate(`/experience/${getExperienceSlug(exp, experiences)}`, { replace: true });
+        return;
+      }
+    } else {
+      setSelectedExperience(null);
+    }
+
+    // 5. District Route: /district/:districtName
+    if (pathname.startsWith('/district/')) {
+      const slug = decodeURIComponent(pathname.replace('/district/', '').trim());
+      const districtNames = BANGLADESH_DISTRICTS.map((d) => d.nameEn);
+      const matchedDistrict = findDistrictBySlug(slug, districtNames);
+      if (matchedDistrict) {
+        setSelectedDistrictFilter(matchedDistrict);
+        updateDistrictSeo(matchedDistrict, language);
+        const destSection = document.getElementById('destinations');
+        if (destSection) {
+          destSection.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+    }
+
+    // 6. Info Pages: /about, /contact, /privacy, /terms
+    if (
+      pathname === '/about' ||
+      pathname === '/contact' ||
+      pathname === '/privacy' ||
+      pathname === '/terms'
+    ) {
+      const pageKey = pathname.slice(1) as InfoPageType;
+      setInfoPage(pageKey);
+      updateInfoPageSeo(pageKey, language);
+    } else {
+      setInfoPage(null);
+    }
+
+    // 7. General Views via searchParams: ?view=planner, ?view=wishlist, ?view=search, ?view=auth, ?view=admin, ?view=report, etc.
+    const view = searchParams.get('view');
+    setIsTripPlannerOpen(view === 'planner');
+    setIsSavedModalOpen(view === 'wishlist');
+    setIsSearchOpen(view === 'search');
+    setIsAuthModalOpen(view === 'auth');
+    setIsUploadModalOpen(view === 'upload');
+    setIsStorySubmitOpen(view === 'story-submit' || view === 'write-story');
+    setIsAdminOpen(view === 'admin');
+    setIsReportModalOpen(view === 'report');
+
+    // Section scroll if ?section=...
+    const section = searchParams.get('section');
+    if (section) {
+      setActiveSection(section);
+      const el = document.getElementById(section);
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Reset SEO to default if on home route with no active modal
+    if (
+      pathname === '/' &&
+      !legacyDest &&
+      !legacyStory &&
+      !legacyFest &&
+      !legacyExp &&
+      !legacyPost &&
+      !view
+    ) {
+      if (activeSection && activeSection !== 'hero') {
+        updateSectionSeo(activeSection, language);
+      } else {
+        resetSeoToDefault(language);
+      }
+    }
+  }, [
+    location.pathname,
+    location.search,
+    destinations,
+    stories,
+    festivals,
+    experiences,
+    communityPosts,
+    language,
+    activeSection,
+    navigate,
+  ]);
+
+  // Route-bound modal handlers
   const handleSelectDestination = (dest: Destination | null) => {
-    setSelectedDestination(dest);
-    setUrlState({ destinationId: dest ? dest.id : null });
+    if (dest) {
+      navigate(`/destination/${getDestinationSlug(dest, destinations)}`);
+    } else {
+      navigate('/');
+    }
   };
 
   const handleSelectStory = (story: EditorialStory | null) => {
-    setSelectedStory(story);
-    setUrlState({ storyId: story ? story.id : null });
+    if (story) {
+      navigate(`/post/${getStorySlug(story, stories)}`);
+    } else {
+      navigate('/');
+    }
   };
 
   const handleSelectFestival = (fest: Festival | null) => {
-    setSelectedFestival(fest);
-    setUrlState({ festivalId: fest ? fest.id : null });
+    if (fest) {
+      navigate(`/festival/${getFestivalSlug(fest, festivals)}`);
+    } else {
+      navigate('/');
+    }
   };
 
   const handleSelectExperience = (exp: Experience | null) => {
-    setSelectedExperience(exp);
-    setUrlState({ experienceId: exp ? exp.id : null });
+    if (exp) {
+      navigate(`/experience/${getExperienceSlug(exp, experiences)}`);
+    } else {
+      navigate('/');
+    }
   };
 
   const handleSelectPost = (post: CommunityPost | null) => {
-    setSelectedCommunityPostId(post ? post.id : null);
-    setUrlState({ postId: post ? post.id : null });
+    if (post) {
+      navigate(`/post/${getPostSlug(post, communityPosts)}`);
+    } else {
+      navigate('/');
+    }
+  };
+
+  const handleSelectDistrict = (districtName: string) => {
+    setSelectedDistrictFilter(districtName);
+    navigate(`/district/${getDistrictSlug(districtName)}`);
+  };
+
+  const handleClearDistrictFilter = () => {
+    setSelectedDistrictFilter(null);
+    navigate('/');
+  };
+
+  const handleOpenInfoPage = (page: InfoPageType | null) => {
+    if (page) {
+      navigate(`/${page}`);
+    } else {
+      navigate('/');
+    }
+  };
+
+  // Views with query parameter bindings
+  const updateQueryView = (viewName: string | null) => {
+    const search = new URLSearchParams(location.search);
+    if (viewName) {
+      search.set('view', viewName);
+    } else {
+      search.delete('view');
+    }
+    const query = search.toString();
+    navigate(`${location.pathname}${query ? `?${query}` : ''}`);
   };
 
   const handleOpenTripPlanner = (open: boolean, preselect: Destination | null = null) => {
     setTripPlannerPreselect(preselect);
     setIsTripPlannerOpen(open);
-    setUrlState({ view: open ? 'planner' : null });
+    updateQueryView(open ? 'planner' : null);
   };
 
   const handleOpenSearch = (open: boolean) => {
     setIsSearchOpen(open);
-    setUrlState({ view: open ? 'search' : null });
+    updateQueryView(open ? 'search' : null);
   };
 
   const handleOpenSavedModal = (open: boolean) => {
     if (open && !currentUser) {
       setIsAuthModalOpen(true);
-      setUrlState({ view: 'auth' });
+      updateQueryView('auth');
       return;
     }
     setIsSavedModalOpen(open);
-    setUrlState({ view: open ? 'wishlist' : null });
+    updateQueryView(open ? 'wishlist' : null);
   };
 
   const handleOpenAuth = (open: boolean) => {
     setIsAuthModalOpen(open);
-    setUrlState({ view: open ? 'auth' : null });
+    updateQueryView(open ? 'auth' : null);
   };
 
   const handleOpenUpload = (open: boolean) => {
     if (open && !currentUser) {
       setIsAuthModalOpen(true);
-      setUrlState({ view: 'auth' });
+      updateQueryView('auth');
       return;
     }
     setIsUploadModalOpen(open);
-    setUrlState({ view: open ? 'upload' : null });
+    updateQueryView(open ? 'upload' : null);
   };
 
   const handleOpenStorySubmit = (open: boolean) => {
     if (open && !currentUser) {
       setIsAuthModalOpen(true);
-      setUrlState({ view: 'auth' });
+      updateQueryView('auth');
       return;
     }
     setIsStorySubmitOpen(open);
-    setUrlState({ view: open ? 'story-submit' : null });
+    updateQueryView(open ? 'story-submit' : null);
+  };
+
+  const handleOpenAdmin = (open: boolean) => {
+    setIsAdminOpen(open);
+    updateQueryView(open ? 'admin' : null);
+  };
+
+  const handleOpenReport = (open: boolean) => {
+    setIsReportModalOpen(open);
+    updateQueryView(open ? 'report' : null);
+  };
+
+  const handleToggleLanguage = (lang: Language) => {
+    setLanguage(lang);
+    const search = new URLSearchParams(location.search);
+    search.set('lang', lang);
+    navigate(`${location.pathname}?${search.toString()}`, { replace: true });
   };
 
   const handleNewStory = (newStory: EditorialStory) => {
@@ -369,35 +541,17 @@ export default function App() {
     }
   };
 
-  const handleOpenAdmin = (open: boolean) => {
-    setIsAdminOpen(open);
-    setUrlState({ view: open ? 'admin' : null });
-  };
-
-  const handleOpenReport = (open: boolean) => {
-    setIsReportModalOpen(open);
-    setUrlState({ view: open ? 'report' : null });
-  };
-
-  const handleToggleLanguage = (lang: Language) => {
-    setLanguage(lang);
-    setUrlState({ lang }, true);
-  };
-
   // Real-time Cloud Persistence handlers
   const handleUpdateDestinations = (newDestinations: Destination[]) => {
     const cleanList = dedupeById(newDestinations);
     const newIds = new Set(cleanList.map((d) => d.id));
-    cleanList.forEach((dest) => {
-      const existing = destinations.find((d) => d.id === dest.id);
-      if (!existing || JSON.stringify(existing) !== JSON.stringify(dest)) {
-        saveDestinationToFirebase(dest);
+    destinations.forEach((oldD) => {
+      if (!newIds.has(oldD.id)) {
+        deleteDestinationFromFirebase(oldD.id);
       }
     });
-    destinations.forEach((dest) => {
-      if (!newIds.has(dest.id)) {
-        deleteDestinationFromFirebase(dest.id);
-      }
+    cleanList.forEach((d) => {
+      saveDestinationToFirebase(d);
     });
     setDestinations(cleanList);
     try {
@@ -407,43 +561,37 @@ export default function App() {
     }
   };
 
-  const handleUpdateExperiences = (newExperiences: Experience[]) => {
-    const newIds = new Set(newExperiences.map((e) => e.id));
-    newExperiences.forEach((exp) => {
-      const existing = experiences.find((e) => e.id === exp.id);
-      if (!existing || JSON.stringify(existing) !== JSON.stringify(exp)) {
-        saveExperienceToFirebase(exp);
+  const handleUpdateExperiences = (newExp: Experience[]) => {
+    const newIds = new Set(newExp.map((e) => e.id));
+    experiences.forEach((oldE) => {
+      if (!newIds.has(oldE.id)) {
+        deleteExperienceFromFirebase(oldE.id);
       }
     });
-    experiences.forEach((exp) => {
-      if (!newIds.has(exp.id)) {
-        deleteExperienceFromFirebase(exp.id);
-      }
+    newExp.forEach((e) => {
+      saveExperienceToFirebase(e);
     });
-    setExperiences(newExperiences);
+    setExperiences(newExp);
     try {
-      localStorage.setItem('discover_bd_experiences', JSON.stringify(newExperiences));
+      localStorage.setItem('discover_bd_experiences', JSON.stringify(newExp));
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleUpdateFestivals = (newFestivals: Festival[]) => {
-    const newIds = new Set(newFestivals.map((f) => f.id));
-    newFestivals.forEach((fest) => {
-      const existing = festivals.find((f) => f.id === fest.id);
-      if (!existing || JSON.stringify(existing) !== JSON.stringify(fest)) {
-        saveFestivalToFirebase(fest);
+  const handleUpdateFestivals = (newFest: Festival[]) => {
+    const newIds = new Set(newFest.map((f) => f.id));
+    festivals.forEach((oldF) => {
+      if (!newIds.has(oldF.id)) {
+        deleteFestivalFromFirebase(oldF.id);
       }
     });
-    festivals.forEach((fest) => {
-      if (!newIds.has(fest.id)) {
-        deleteFestivalFromFirebase(fest.id);
-      }
+    newFest.forEach((f) => {
+      saveFestivalToFirebase(f);
     });
-    setFestivals(newFestivals);
+    setFestivals(newFest);
     try {
-      localStorage.setItem('discover_bd_festivals', JSON.stringify(newFestivals));
+      localStorage.setItem('discover_bd_festivals', JSON.stringify(newFest));
     } catch (e) {
       console.error(e);
     }
@@ -451,16 +599,13 @@ export default function App() {
 
   const handleUpdateStories = (newStories: EditorialStory[]) => {
     const newIds = new Set(newStories.map((s) => s.id));
-    newStories.forEach((story) => {
-      const existing = stories.find((s) => s.id === story.id);
-      if (!existing || JSON.stringify(existing) !== JSON.stringify(story)) {
-        saveStoryToFirebase(story);
+    stories.forEach((oldS) => {
+      if (!newIds.has(oldS.id)) {
+        deleteStoryFromFirebase(oldS.id);
       }
     });
-    stories.forEach((story) => {
-      if (!newIds.has(story.id)) {
-        deleteStoryFromFirebase(story.id);
-      }
+    newStories.forEach((s) => {
+      saveStoryToFirebase(s);
     });
     setStories(newStories);
     try {
@@ -472,16 +617,13 @@ export default function App() {
 
   const handleUpdateCommunityPosts = (newPosts: CommunityPost[]) => {
     const newIds = new Set(newPosts.map((p) => p.id));
-    newPosts.forEach((post) => {
-      const existing = communityPosts.find((p) => p.id === post.id);
-      if (!existing || JSON.stringify(existing) !== JSON.stringify(post)) {
-        saveCommunityPostToFirebase(post);
+    communityPosts.forEach((oldP) => {
+      if (!newIds.has(oldP.id)) {
+        deleteCommunityPostFromFirebase(oldP.id);
       }
     });
-    communityPosts.forEach((post) => {
-      if (!newIds.has(post.id)) {
-        deleteCommunityPostFromFirebase(post.id);
-      }
+    newPosts.forEach((p) => {
+      saveCommunityPostToFirebase(p);
     });
     setCommunityPosts(newPosts);
     try {
@@ -492,6 +634,12 @@ export default function App() {
   };
 
   const handleResetAllData = () => {
+    setDestinations(dedupeById(DESTINATIONS));
+    setExperiences(EXPERIENCES);
+    setFestivals(FESTIVALS);
+    setStories(EDITORIAL_STORIES);
+    setCommunityPosts(SEED_COMMUNITY_POSTS);
+
     try {
       localStorage.removeItem('discover_bd_destinations');
       localStorage.removeItem('discover_bd_experiences');
@@ -501,262 +649,256 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    setDestinations(DESTINATIONS);
-    setExperiences(EXPERIENCES);
-    setFestivals(FESTIVALS);
-    setStories(EDITORIAL_STORIES);
-    setCommunityPosts(SEED_COMMUNITY_POSTS);
   };
 
-  // Live Real-Time Sync with Firebase Firestore across ALL browsers & devices
+  // Firebase Real-time Synchronization
   useEffect(() => {
-    // Real-time listeners: keeps React state and all connected browsers synchronized live (read-only, no auth required)
-    const unsubscribe = subscribeToAllFirestoreData({
-      onDestinations: (items) => {
-        if (items.length > 0) setDestinations(dedupeById(items));
+    const unsubscribeFirestore = subscribeToAllFirestoreData({
+      onDestinations: (cloudDestinations) => {
+        if (cloudDestinations && cloudDestinations.length > 0) {
+          const merged = dedupeById([...cloudDestinations, ...DESTINATIONS]);
+          setDestinations(merged);
+          try {
+            localStorage.setItem('discover_bd_destinations', JSON.stringify(merged));
+          } catch (e) {
+            console.error(e);
+          }
+        }
       },
-      onExperiences: (items) => {
-        if (items.length > 0) setExperiences(dedupeById(items));
+      onExperiences: (cloudExperiences) => {
+        if (cloudExperiences && cloudExperiences.length > 0) {
+          const merged = dedupeById([...cloudExperiences, ...EXPERIENCES]);
+          setExperiences(merged);
+          try {
+            localStorage.setItem('discover_bd_experiences', JSON.stringify(merged));
+          } catch (e) {
+            console.error(e);
+          }
+        }
       },
-      onFestivals: (items) => {
-        if (items.length > 0) setFestivals(dedupeById(items));
+      onFestivals: (cloudFestivals) => {
+        if (cloudFestivals && cloudFestivals.length > 0) {
+          const merged = dedupeById([...cloudFestivals, ...FESTIVALS]);
+          setFestivals(merged);
+          try {
+            localStorage.setItem('discover_bd_festivals', JSON.stringify(merged));
+          } catch (e) {
+            console.error(e);
+          }
+        }
       },
-      onStories: (items) => {
-        if (items.length > 0) setStories(dedupeById(items));
+      onStories: (cloudStories) => {
+        if (cloudStories && cloudStories.length > 0) {
+          const merged = dedupeById([...cloudStories, ...EDITORIAL_STORIES]);
+          setStories(merged);
+          try {
+            localStorage.setItem('discover_bd_stories', JSON.stringify(merged));
+          } catch (e) {
+            console.error(e);
+          }
+        }
       },
-      onCommunityPosts: (items) => {
-        if (items.length > 0) setCommunityPosts(dedupeById(items));
+      onCommunityPosts: (cloudCommunityPosts) => {
+        if (cloudCommunityPosts && cloudCommunityPosts.length > 0) {
+          const merged = dedupeById([...cloudCommunityPosts, ...SEED_COMMUNITY_POSTS]);
+          setCommunityPosts(merged);
+          try {
+            localStorage.setItem('discover_bd_community_posts', JSON.stringify(merged));
+          } catch (e) {
+            console.error(e);
+          }
+        }
       },
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeFirestore();
+    };
   }, []);
 
-  // Listen to Firebase Auth state
+  // Listen to Firebase Auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
+      if (firebaseUser) {
         try {
-          const syncedUser = await syncFirebaseUserProfile(user);
-          setCurrentUser(syncedUser);
-        } catch {
-          setCurrentUser({
-            uid: user.uid,
-            displayName: user.displayName,
-            email: user.email,
-            photoURL: user.photoURL,
-            isAnonymous: user.isAnonymous,
-            role: 'user',
-          });
-        }
-        localStorage.removeItem('discover_bd_guest_user');
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userDocSnap = await getDoc(userDocRef);
 
-        // Load user bookmarks from Firestore
-        try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userSnap = await getDoc(userDocRef);
-          if (userSnap.exists() && userSnap.data().savedDestinations) {
-            const remoteSaved = userSnap.data().savedDestinations as string[];
-            setSavedIds((prev) => Array.from(new Set([...prev, ...remoteSaved])));
+          let saved: string[] = ['coxs-bazar', 'sylhet-tea'];
+
+          if (userDocSnap.exists()) {
+            const data = userDocSnap.data();
+            saved = Array.isArray(data.saved) ? data.saved : saved;
           }
+
+          const userProfile = await syncFirebaseUserProfile(firebaseUser);
+
+          setCurrentUser(userProfile);
+          setSavedIds(saved);
+          localStorage.setItem('discover_bd_guest_user', JSON.stringify(userProfile));
+          localStorage.setItem('discover_bd_saved', JSON.stringify(saved));
         } catch (e) {
-          console.warn('Firebase user sync note:', e);
+          console.error('Failed to sync user Firestore doc:', e);
+          const fallbackUser: AppUser = {
+            uid: firebaseUser.uid,
+            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Traveler',
+            email: firebaseUser.email || '',
+            role: checkIsUserAdmin({ email: firebaseUser.email } as AppUser) ? 'admin' : 'user',
+            isAnonymous: firebaseUser.isAnonymous,
+            photoURL: firebaseUser.photoURL || null,
+            createdAt: firebaseUser.metadata.creationTime ? Date.parse(firebaseUser.metadata.creationTime) : Date.now(),
+          };
+          setCurrentUser(fallbackUser);
+          localStorage.setItem('discover_bd_guest_user', JSON.stringify(fallbackUser));
         }
       } else {
-        try {
-          const storedGuest = localStorage.getItem('discover_bd_guest_user');
-          if (storedGuest) {
-            setCurrentUser(JSON.parse(storedGuest));
-          } else {
+        const storedGuest = localStorage.getItem('discover_bd_guest_user');
+        if (storedGuest) {
+          try {
+            const parsed = JSON.parse(storedGuest);
+            setCurrentUser(parsed);
+          } catch {
             setCurrentUser(null);
           }
-        } catch {
+        } else {
           setCurrentUser(null);
         }
       }
     });
+
     return () => unsubscribe();
   }, []);
 
-  const handleSetGuestUser = (guest: AppUser) => {
-    try {
-      localStorage.setItem('discover_bd_guest_user', JSON.stringify(guest));
-    } catch (e) {
-      console.error(e);
-    }
-    setCurrentUser(guest);
-  };
+  const toggleSave = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
 
-  const handleSignOutGuest = () => {
-    try {
-      localStorage.removeItem('discover_bd_guest_user');
-    } catch (e) {
-      console.error(e);
+    let newSaved: string[];
+    if (savedIds.includes(id)) {
+      newSaved = savedIds.filter((item) => item !== id);
+    } else {
+      newSaved = [...savedIds, id];
     }
-    setCurrentUser(null);
-  };
+    setSavedIds(newSaved);
+    localStorage.setItem('discover_bd_saved', JSON.stringify(newSaved));
 
-  // Sync saved to localStorage & Firebase
-  useEffect(() => {
-    try {
-      localStorage.setItem('discover_bd_saved', JSON.stringify(savedIds));
-    } catch (e) {
-      console.error(e);
-    }
-
-    if (currentUser && auth.currentUser && auth.currentUser.uid === currentUser.uid) {
+    if (currentUser && !currentUser.isAnonymous && currentUser.uid) {
       try {
         const userDocRef = doc(db, 'users', currentUser.uid);
-        setDoc(userDocRef, { savedDestinations: savedIds, lastUpdated: Date.now() }, { merge: true }).catch((err) => {
-          console.warn('Firestore bookmarks sync note:', err);
-        });
+        await setDoc(userDocRef, { saved: newSaved }, { merge: true });
       } catch (err) {
-        console.warn('Firestore bookmarks sync note:', err);
+        console.error('Failed to save destination to user cloud doc:', err);
       }
     }
-  }, [savedIds, currentUser]);
+  };
 
-  // Keyboard shortcut for search (Cmd+K / Ctrl+K) or Admin (Alt+A)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsSearchOpen((prev) => !prev);
-      }
-      if (e.altKey && (e.key === 'a' || e.key === 'A')) {
-        e.preventDefault();
-        setIsAdminOpen((prev) => !prev);
-      }
-      if (e.key === 'Escape') {
-        setIsSearchOpen(false);
-        setIsTripPlannerOpen(false);
-        setIsSavedModalOpen(false);
-        setIsAuthModalOpen(false);
-        setIsUploadModalOpen(false);
-        setIsAdminOpen(false);
-        setIsReportModalOpen(false);
-        setSelectedDestination(null);
-        setSelectedStory(null);
-        setSelectedFestival(null);
-        setSelectedExperience(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  const handlePlanTripForDestination = (dest: Destination) => {
+    handleSelectDestination(null);
+    handleOpenTripPlanner(true, dest);
+  };
 
-  const toggleSave = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!currentUser) {
-      setIsAuthModalOpen(true);
-      setUrlState({ view: 'auth' });
-      return;
+  const handleNewCommunityPost = (post: CommunityPost) => {
+    saveCommunityPostToFirebase(post);
+    const updated = [post, ...communityPosts];
+    setCommunityPosts(updated);
+    try {
+      localStorage.setItem('discover_bd_community_posts', JSON.stringify(updated));
+    } catch (e) {
+      console.error(e);
     }
-    setSavedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
   };
 
   const scrollToSection = (sectionId: string) => {
     setActiveSection(sectionId);
-    if (sectionId === 'hero') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
+    if (location.pathname !== '/') {
+      navigate('/');
+      setTimeout(() => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 50);
+    } else {
+      const element = document.getElementById(sectionId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      }
     }
-    const element = document.getElementById(sectionId);
-    if (element) {
-      const headerOffset = 80;
-      const elementPosition = element.getBoundingClientRect().top;
-      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: 'smooth',
-      });
-    }
   };
 
-  const handlePlanTripForDestination = (destination: Destination) => {
-    setSelectedDestination(null);
-    setTripPlannerPreselect(destination);
-    setIsTripPlannerOpen(true);
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-
-  const handleNewCommunityPost = (post: CommunityPost) => {
-    handleUpdateCommunityPosts([post, ...communityPosts]);
-    scrollToSection('community-gallery');
-  };
-
-  // Featured destinations for the Hero Section
-  const heroFeaturedList = destinations.filter((d) => d.heroFeatured);
-  const coxsBazar = heroFeaturedList[0] || destinations[0] || DESTINATIONS[0];
-  const sylhet = heroFeaturedList[1] || destinations[1] || DESTINATIONS[1];
-  const paharpur = heroFeaturedList[2] || destinations[2] || DESTINATIONS[2];
 
   const savedDestinationsList = destinations.filter((d) => savedIds.includes(d.id));
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F6F3EA] text-[#1B211D] relative">
-      {/* Top Scroll Progress Indicator */}
+    <div className="min-h-screen bg-[#FAF8F3] text-neutral-800 flex flex-col font-sans selection:bg-[#DE9B2E]/30 selection:text-[#0A2A21]">
+      {/* Scroll Progress Bar */}
       <motion.div
-        id="scroll-progress-bar"
-        className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#DE9B2E] via-[#0F3B2E] to-[#DE9B2E] z-50 origin-left shadow-xs pointer-events-none"
+        className="fixed top-0 left-0 right-0 h-1 bg-[#DE9B2E] origin-left z-[100]"
         style={{ scaleX }}
       />
 
-      {/* Floating Scroll to Top Button */}
-      <AnimatePresence>
-        {showScrollTop && (
-          <motion.button
-            id="scroll-to-top-btn"
-            initial={{ opacity: 0, scale: 0.7, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.7, y: 20 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
-            whileHover={{ scale: 1.1, y: -2 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="fixed bottom-6 right-6 z-40 p-3.5 bg-[#0F3B2E] text-white rounded-full shadow-2xl hover:bg-[#DE9B2E] hover:text-[#0A2A21] transition-colors border border-[#DE9B2E]/40 flex items-center justify-center cursor-pointer group"
-            title={language === 'en' ? 'Scroll to Top' : 'উপরে যান'}
-            aria-label="Scroll to top"
-          >
-            <ArrowUp className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      {/* Top Header */}
+      {/* Header */}
       <Header
         language={language}
         onToggleLanguage={handleToggleLanguage}
+        onOpenTripPlanner={() => handleOpenTripPlanner(true)}
+        onOpenSearch={() => handleOpenSearch(true)}
+        onOpenSavedModal={() => handleOpenSavedModal(true)}
+        onOpenAuth={() => handleOpenAuth(true)}
+        onOpenAdmin={() => handleOpenAdmin(true)}
+        currentUser={currentUser}
+        savedCount={savedIds.length}
         activeSection={activeSection}
         onNavigate={scrollToSection}
-        onOpenSearch={() => handleOpenSearch(true)}
-        onOpenTripPlanner={() => handleOpenTripPlanner(true)}
-        savedCount={savedIds.length}
-        onOpenSavedModal={() => handleOpenSavedModal(true)}
-        currentUser={currentUser}
-        onOpenAuth={() => handleOpenAuth(true)}
-        onOpenUploadModal={() => handleOpenUpload(true)}
-        onOpenStoryModal={() => handleOpenStorySubmit(true)}
-        onOpenReportModal={() => handleOpenReport(true)}
-        onOpenAdmin={() => handleOpenAdmin(true)}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col">
-        {/* Hero Section */}
+      {/* Main Content Sections */}
+      <main className="flex-1">
         <HeroSection
           language={language}
           onExploreClick={() => scrollToSection('destinations')}
           onPlanTripClick={() => handleOpenTripPlanner(true)}
           onSelectDestination={handleSelectDestination}
-          onSelectFestivalModal={() => handleSelectFestival(festivals[0] || FESTIVALS[0])}
-          coxsBazar={coxsBazar}
-          sylhet={sylhet}
-          paharpur={paharpur}
+          onSelectFestivalModal={() => {
+            const pohelaBoishakh = festivals.find((f) => f.id === 'pohela-boishakh') || festivals[0];
+            if (pohelaBoishakh) handleSelectFestival(pohelaBoishakh);
+          }}
+          coxsBazar={destinations.find((d) => d.id === 'coxs-bazar') || destinations[0]}
+          sylhet={destinations.find((d) => d.id === 'sylhet-tea') || destinations[1]}
+          paharpur={destinations.find((d) => d.id === 'paharpur') || destinations[2]}
         />
 
-        {/* Dynamic 4 Recent Posts & 4 Recent Stories Showcase Slider */}
+        {/* 64 Districts Live Weather & Interactive Showcase */}
+        <DistrictsSection
+          destinations={destinations}
+          language={language}
+          onSelectDistrict={handleSelectDistrict}
+        />
+
+        {/* Interactive GIS Map Section with 64 Districts */}
+        <GisMapSection
+          language={language}
+          destinations={destinations}
+          onSelectDestination={handleSelectDestination}
+          selectedDistrictFilter={selectedDistrictFilter}
+          onClearDistrictFilter={handleClearDistrictFilter}
+        />
+
+        {/* All Tourist Places Grid (480+ Places with 64-District Filter & Load More) */}
+        <DestinationsGrid
+          destinations={destinations}
+          language={language}
+          onSelectDestination={handleSelectDestination}
+          savedIds={savedIds}
+          onToggleSave={toggleSave}
+          onPlanTrip={handlePlanTripForDestination}
+          selectedDistrictFilter={selectedDistrictFilter}
+          onClearDistrictFilter={handleClearDistrictFilter}
+        />
+
+        {/* Recent 10 Tourist Attractions Showcase Slider */}
         <RecentShowcaseSlider
           destinations={destinations}
           stories={stories}
@@ -767,71 +909,43 @@ export default function App() {
           onToggleSave={toggleSave}
         />
 
-        {/* Curated Destinations Section */}
-        <DestinationsGrid
-          destinations={destinations}
-          language={language}
-          onSelectDestination={handleSelectDestination}
-          savedIds={savedIds}
-          onToggleSave={toggleSave}
-        />
-
-        {/* Interactive GIS Map Section */}
-        <GisMapSection
-          destinations={destinations}
-          language={language}
-          onSelectDestination={handleSelectDestination}
-          selectedDistrictFilter={selectedDistrictFilter}
-          onClearDistrictFilter={() => setSelectedDistrictFilter(null)}
-        />
-
-        {/* 64 Districts Directory Section */}
-        <DistrictsSection
-          destinations={destinations}
-          language={language}
-          onSelectDistrict={handleSelectDistrict}
-        />
-
-        {/* Things To Do & Experiences Section */}
+        {/* Things To Do & Curated Experiences */}
         <ThingsToDoSection
-          experiences={experiences}
           language={language}
+          experiences={experiences}
           onSelectExperience={handleSelectExperience}
+          onOpenTripPlanner={() => handleOpenTripPlanner(true)}
         />
 
-        {/* Cultural Festivals Section */}
+        {/* Cultural Festivals & Events */}
         <FestivalsSection
-          festivals={festivals}
           language={language}
+          festivals={festivals}
           onSelectFestival={handleSelectFestival}
         />
 
-        {/* Official Tourism News & Bulletins Section (Feature 3) */}
+        {/* Tourism News & User Interaction System */}
         <NewsSection
           language={language}
           currentUser={currentUser}
           onOpenAuth={() => handleOpenAuth(true)}
         />
 
-        {/* Editorial Stories & Essays */}
+        {/* Editorial Stories & Heritage Articles */}
         <StoriesSection
-          stories={stories}
           language={language}
+          stories={stories}
           onSelectStory={handleSelectStory}
-          onOpenStorySubmit={() => handleOpenStorySubmit(true)}
-          savedIds={savedIds}
-          onToggleSave={toggleSave}
-          currentUser={currentUser}
-          onOpenAuth={() => handleOpenAuth(true)}
+          onWriteStoryClick={() => handleOpenStorySubmit(true)}
         />
 
-        {/* Community Traveler Photos & Gallery */}
+        {/* Community Photo Gallery & ImgBB Uploads */}
         <CommunityGallerySection
           language={language}
-          onOpenUploadModal={() => handleOpenUpload(true)}
-          onOpenAuth={() => handleOpenAuth(true)}
-          customPosts={communityPosts}
           currentUser={currentUser}
+          onOpenAuth={() => handleOpenAuth(true)}
+          posts={communityPosts}
+          onOpenUploadModal={() => handleOpenUpload(true)}
           onOpenAdmin={() => handleOpenAdmin(true)}
           selectedPostId={selectedCommunityPostId}
           onSelectPost={handleSelectPost}
@@ -849,6 +963,15 @@ export default function App() {
           const dest = destinations.find((d) => d.id === id);
           if (dest) handleSelectDestination(dest);
         }}
+        onOpenInfoPage={handleOpenInfoPage}
+      />
+
+      {/* Info Pages Modal (/about, /contact, /privacy, /terms) */}
+      <InfoPageModal
+        page={infoPage}
+        language={language}
+        onClose={() => handleOpenInfoPage(null)}
+        onOpenReportModal={() => handleOpenReport(true)}
       />
 
       {/* Modals and Overlays */}
@@ -948,45 +1071,23 @@ export default function App() {
         />
       )}
 
-      {/* Firebase Cloud Authentication Modal */}
+      {/* Firebase Authentication Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => handleOpenAuth(false)}
-        currentUser={currentUser}
         language={language}
-        savedCount={savedIds.length}
-        onSetGuestUser={handleSetGuestUser}
-        onSignOutGuest={handleSignOutGuest}
-        onOpenAdmin={() => {
-          handleOpenAuth(false);
-          handleOpenAdmin(true);
+        onAuthSuccess={(user) => {
+          setCurrentUser(user);
         }}
-        onOpenUploadModal={() => {
-          handleOpenAuth(false);
-          handleOpenUpload(true);
-        }}
-        onOpenStoryModal={() => {
-          handleOpenAuth(false);
-          handleOpenStorySubmit(true);
-        }}
-        onOpenSavedModal={() => {
-          handleOpenAuth(false);
-          handleOpenSavedModal(true);
-        }}
-        onUpdateCurrentUser={(updated) => setCurrentUser(updated)}
       />
 
-      {/* Editorial Story Submission Modal */}
+      {/* Story Submission Modal */}
       <StorySubmitModal
         isOpen={isStorySubmitOpen}
         onClose={() => handleOpenStorySubmit(false)}
-        currentUser={currentUser}
         language={language}
-        onStoryCreated={handleNewStory}
-        onOpenAuth={() => {
-          handleOpenStorySubmit(false);
-          handleOpenAuth(true);
-        }}
+        currentUser={currentUser}
+        onSubmitStory={handleNewStory}
       />
 
       {/* ImgBB API Photo Share Modal */}
@@ -1032,7 +1133,30 @@ export default function App() {
         onUpdateCommunityPosts={handleUpdateCommunityPosts}
         onResetAllData={handleResetAllData}
       />
+
+      {/* Scroll to Top floating action button */}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 20 }}
+            onClick={scrollToTop}
+            className="fixed bottom-6 right-6 z-40 p-3.5 rounded-full bg-[#0F3B2E] text-white shadow-xl hover:bg-[#0A2A21] border border-[#DE9B2E]/40 focus:outline-none focus:ring-2 focus:ring-[#DE9B2E] transition-all cursor-pointer group"
+            aria-label="Scroll to top"
+          >
+            <ArrowUp className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
+export default function App() {
+  return (
+    <BrowserRouter>
+      <MainAppContent />
+    </BrowserRouter>
+  );
+}

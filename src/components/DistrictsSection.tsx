@@ -4,7 +4,7 @@ import { Destination, Language } from '../types';
 import { MapPin, ArrowRight, Building2, Sparkles, Navigation } from 'lucide-react';
 
 interface DistrictsSectionProps {
-  destinations: Destination[];
+  destinations?: Destination[];
   language: Language;
   onSelectDistrict: (districtName: string) => void;
 }
@@ -126,7 +126,7 @@ const DIVISIONS_DATA: { nameEn: string; nameBn: string; districts: { en: string;
 ];
 
 export const DistrictsSection: React.FC<DistrictsSectionProps> = ({
-  destinations,
+  destinations = [],
   language,
   onSelectDistrict,
 }) => {
@@ -134,11 +134,11 @@ export const DistrictsSection: React.FC<DistrictsSectionProps> = ({
 
   // Count destinations per district
   const getCountForDistrict = (distEn: string, distBn: string) => {
-    return destinations.filter(
+    return (destinations || []).filter(
       (d) =>
-        (d.district && (d.district.toLowerCase() === distEn.toLowerCase() || d.district === distBn)) ||
-        d.title.toLowerCase().includes(distEn.toLowerCase()) ||
-        d.titleBn.includes(distBn)
+        (d?.district && (d.district.toLowerCase() === distEn.toLowerCase() || d.district === distBn)) ||
+        (d?.title && d.title.toLowerCase().includes(distEn.toLowerCase())) ||
+        (d?.titleBn && d.titleBn.includes(distBn))
     ).length;
   };
 

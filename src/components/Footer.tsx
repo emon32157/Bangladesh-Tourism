@@ -9,6 +9,7 @@ interface FooterProps {
   onNavigate?: (sectionId: string) => void;
   onOpenReportModal?: () => void;
   onSelectDestinationById?: (id: string) => void;
+  onOpenInfoPage?: (page: 'about' | 'contact' | 'privacy' | 'terms') => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -16,6 +17,7 @@ export const Footer: React.FC<FooterProps> = ({
   onNavigate,
   onOpenReportModal,
   onSelectDestinationById,
+  onOpenInfoPage,
 }) => {
   const footerNavItems = [
     { id: 'hero', labelEn: 'Home', labelBn: 'মূলপাতা' },
@@ -155,11 +157,62 @@ export const Footer: React.FC<FooterProps> = ({
       </div>
 
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
-        <p className="text-[#6B756E] font-medium">
-          {language === 'en'
-            ? '© Bangladesh Tourism & Heritage Portal'
-            : '© বাংলাদেশ জাতীয় ঐতিহ্য ও পর্যটন ডিরেক্টরি'}
-        </p>
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-[#6B756E] font-medium">
+          <span>
+            {language === 'en'
+              ? '© Bangladesh Tourism & Heritage Portal'
+              : '© বাংলাদেশ জাতীয় ঐতিহ্য ও পর্যটন ডিরেক্টরি'}
+          </span>
+          <span className="hidden sm:inline">|</span>
+          <a
+            href="/about"
+            onClick={(e) => {
+              if (onOpenInfoPage) {
+                e.preventDefault();
+                onOpenInfoPage('about');
+              }
+            }}
+            className="hover:text-[#0A2A21] underline-offset-2 hover:underline transition-colors"
+          >
+            {language === 'en' ? 'About Us' : 'আমাদের সম্পর্কে'}
+          </a>
+          <a
+            href="/contact"
+            onClick={(e) => {
+              if (onOpenInfoPage) {
+                e.preventDefault();
+                onOpenInfoPage('contact');
+              }
+            }}
+            className="hover:text-[#0A2A21] underline-offset-2 hover:underline transition-colors"
+          >
+            {language === 'en' ? 'Contact & Helpline' : 'যোগাযোগ ও হেল্পলাইন'}
+          </a>
+          <a
+            href="/privacy"
+            onClick={(e) => {
+              if (onOpenInfoPage) {
+                e.preventDefault();
+                onOpenInfoPage('privacy');
+              }
+            }}
+            className="hover:text-[#0A2A21] underline-offset-2 hover:underline transition-colors"
+          >
+            {language === 'en' ? 'Privacy Policy' : 'গোপনীয়তা নীতি'}
+          </a>
+          <a
+            href="/terms"
+            onClick={(e) => {
+              if (onOpenInfoPage) {
+                e.preventDefault();
+                onOpenInfoPage('terms');
+              }
+            }}
+            className="hover:text-[#0A2A21] underline-offset-2 hover:underline transition-colors"
+          >
+            {language === 'en' ? 'Terms of Service' : 'শর্তাবলী'}
+          </a>
+        </div>
 
         <div className="flex items-center gap-4">
           <a

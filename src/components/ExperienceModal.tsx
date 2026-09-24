@@ -21,7 +21,7 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({
   if (!experience) return null;
 
   const handleCopyLink = async () => {
-    const success = await copyDirectLink('experience', experience.id);
+    const success = await copyDirectLink('experience', experience.id, experience.title);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);

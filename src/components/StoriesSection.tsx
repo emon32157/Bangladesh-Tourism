@@ -82,9 +82,9 @@ export const StoriesSection: React.FC<StoriesSectionProps> = ({
             >
               <div>
                 {/* Article Cover Image */}
-                <div className="relative h-52 overflow-hidden">
+                <div className="relative h-52 overflow-hidden bg-neutral-100">
                   <img
-                    src={story.image}
+                    src={story.image || 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80'}
                     alt={
                       language === 'en'
                         ? `${story.title} - Bangladesh Tourism Editorial Story`

@@ -116,7 +116,7 @@ export const CommunityGallerySection: React.FC<CommunityGallerySectionProps> = (
 
   const handleCopyPostLink = async () => {
     if (!selectedPost) return;
-    const success = await copyDirectLink('post', selectedPost.id);
+    const success = await copyDirectLink('post', selectedPost.id, selectedPost.title || selectedPost.caption);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);

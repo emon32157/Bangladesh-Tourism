@@ -44,7 +44,7 @@ export const PostModal: React.FC<PostModalProps> = ({
 
   const handleCopyPostLink = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const success = await copyDirectLink('post', post.id);
+    const success = await copyDirectLink('post', post.id, post.title || post.caption);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);

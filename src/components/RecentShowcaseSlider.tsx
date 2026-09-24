@@ -262,7 +262,7 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
                         {/* Image Container */}
                         <div className="relative h-52 sm:h-56 overflow-hidden bg-neutral-100">
                           <img
-                            src={dest.image}
+                            src={dest.image || 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=600&q=80'}
                             alt={
                               language === 'en'
                                 ? `${dest.title} - Tourist attraction in ${dest.district}, Bangladesh`
@@ -366,13 +366,13 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
                       whileHover={{ y: -6 }}
                       transition={{ duration: 0.2 }}
                       className="h-full bg-white rounded-3xl border border-[#D8D0BC] overflow-hidden shadow-xs hover:shadow-xl hover:border-[#DE9B2E] transition-all flex flex-col justify-between group cursor-pointer"
-                      onClick={() => onSelectStory(story)}
+                      onClick={() => onSelectStory && onSelectStory(story)}
                     >
                       <div>
                         {/* Cover Image */}
                         <div className="relative h-52 sm:h-56 overflow-hidden bg-neutral-100">
                           <img
-                            src={story.image}
+                            src={story.image || 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=600&q=80'}
                             alt={
                               language === 'en'
                                 ? `${story.title} - Bangladesh Travel Story`

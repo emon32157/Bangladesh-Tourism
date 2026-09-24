@@ -25,6 +25,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { copyDirectLink } from '../lib/urlSync';
+import { getDestinationSlug } from '../lib/slugs';
 import { VideoPlayer } from './VideoPlayer';
 
 interface DestinationModalProps {
@@ -93,9 +94,11 @@ export const DestinationModal: React.FC<DestinationModalProps> = ({
 
   const getShareUrl = () => {
     if (typeof window === 'undefined') return '';
-    const url = new URL(window.location.origin + window.location.pathname);
-    url.searchParams.set('destination', destination.id);
-    return url.toString();
+    const origin = window.location.origin && window.location.origin !== 'null'
+      ? window.location.origin
+      : 'https://bdtourismboard.netlify.app';
+    const slug = getDestinationSlug(destination);
+    return `${origin}/destination/${slug}`;
   };
 
   const getShareTitle = () => {
@@ -143,7 +146,7 @@ export const DestinationModal: React.FC<DestinationModalProps> = ({
     }
 
     // Fallback: Copy link directly and open social sharing options
-    const success = await copyDirectLink('destination', destination.id);
+    const success = await copyDirectLink('destination', destination.id, destination.title);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
@@ -153,7 +156,7 @@ export const DestinationModal: React.FC<DestinationModalProps> = ({
   };
 
   const handleDirectCopy = async () => {
-    const success = await copyDirectLink('destination', destination.id);
+    const success = await copyDirectLink('destination', destination.id, destination.title);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);

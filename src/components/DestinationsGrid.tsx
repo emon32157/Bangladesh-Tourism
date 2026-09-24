@@ -202,9 +202,9 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
                   className="bg-white rounded-2xl sm:rounded-[32px] border border-[#D8D0BC] overflow-hidden shadow-xs hover:shadow-xl hover:border-[#DE9B2E]/60 transition-all duration-300 flex flex-col group cursor-pointer"
                 >
                   {/* Image Container with Overlay */}
-                  <div className="relative h-40 sm:h-56 md:h-64 lg:h-72 overflow-hidden">
+                  <div className="relative h-40 sm:h-56 md:h-64 lg:h-72 overflow-hidden bg-neutral-100">
                     <img
-                      src={dest.image}
+                      src={dest.image || 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=800&q=80'}
                       alt={
                         language === 'en'
                           ? `${dest.title} - Tourist destination in ${dest.district}, ${dest.division}, Bangladesh`

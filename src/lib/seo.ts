@@ -4,6 +4,7 @@
  */
 
 import { Destination, EditorialStory, Experience, Festival, Language } from '../types';
+import { getDestinationSlug, getStorySlug, getFestivalSlug, getExperienceSlug, getDistrictSlug } from './slugs';
 
 export const SITE_URL = 'https://bdtourismboard.netlify.app';
 export const SITE_NAME = 'Bangladesh Tourism Board';
@@ -64,7 +65,7 @@ function setDynamicSchema(schemaObj: Record<string, unknown> | null) {
 }
 
 /**
- * Resets all metadata to default Homepage SEO
+ * Resets all metadata to default Homepage SEO (Route: /)
  */
 export function resetSeoToDefault(language: Language = 'en') {
   if (typeof document === 'undefined') return;
@@ -84,18 +85,18 @@ export function resetSeoToDefault(language: Language = 'en') {
   setMetaTag("meta[name='description']", 'name', 'description', description);
   setMetaTag("meta[property='og:title']", 'property', 'og:title', title);
   setMetaTag("meta[property='og:description']", 'property', 'og:description', description);
-  setMetaTag("meta[property='og:url']", 'property', 'og:url', SITE_URL);
+  setMetaTag("meta[property='og:url']", 'property', 'og:url', `${SITE_URL}/`);
   setMetaTag("meta[property='og:image']", 'property', 'og:image', DEFAULT_IMAGE);
   setMetaTag("meta[name='twitter:title']", 'name', 'twitter:title', title);
   setMetaTag("meta[name='twitter:description']", 'name', 'twitter:description', description);
   setMetaTag("meta[name='twitter:image']", 'name', 'twitter:image', DEFAULT_IMAGE);
 
-  setCanonical(SITE_URL + '/');
+  setCanonical(`${SITE_URL}/`);
   setDynamicSchema(null);
 }
 
 /**
- * Updates SEO metadata for a Destination Modal or Deep Link
+ * Updates SEO metadata for a Destination (Route: /destination/:slug)
  */
 export function updateDestinationSeo(destination: Destination, language: Language = 'en') {
   if (typeof document === 'undefined' || !destination) return;
@@ -108,7 +109,8 @@ export function updateDestinationSeo(destination: Destination, language: Languag
     ? (destination.summary || destination.description || `${destTitle} is a premier tourist attraction in ${districtName}, ${divisionName}, Bangladesh.`)
     : (destination.summaryBn || destination.descriptionBn || `${destTitle} বাংলাদেশের ${districtName} জেলার একটি আকর্ষণীয় পর্যটন কেন্দ্র।`);
 
-  const canonicalUrl = `${SITE_URL}/?destination=${destination.id}`;
+  const slug = getDestinationSlug(destination);
+  const canonicalUrl = `${SITE_URL}/destination/${slug}`;
   const imageUrl = destination.image || DEFAULT_IMAGE;
 
   document.title = pageTitle;
@@ -162,7 +164,7 @@ export function updateDestinationSeo(destination: Destination, language: Languag
 }
 
 /**
- * Updates SEO metadata for an Editorial Story (Article Schema)
+ * Updates SEO metadata for an Editorial Story or Community Post (Route: /post/:slug)
  */
 export function updateStorySeo(story: EditorialStory, language: Language = 'en') {
   if (typeof document === 'undefined' || !story) return;
@@ -170,7 +172,8 @@ export function updateStorySeo(story: EditorialStory, language: Language = 'en')
   const storyTitle = language === 'en' ? story.title : (story.titleBn || story.title);
   const pageTitle = `${storyTitle} | Bangladesh Tourism Stories`;
   const excerptText = language === 'en' ? (story.excerpt || storyTitle) : (story.excerptBn || story.excerpt || storyTitle);
-  const canonicalUrl = `${SITE_URL}/?story=${story.id}`;
+  const slug = getStorySlug(story);
+  const canonicalUrl = `${SITE_URL}/post/${slug}`;
   const imageUrl = story.image || DEFAULT_IMAGE;
 
   document.title = pageTitle;
@@ -219,7 +222,7 @@ export function updateStorySeo(story: EditorialStory, language: Language = 'en')
 }
 
 /**
- * Updates SEO metadata for a Festival
+ * Updates SEO metadata for a Festival (Route: /festival/:slug)
  */
 export function updateFestivalSeo(festival: Festival, language: Language = 'en') {
   if (typeof document === 'undefined' || !festival) return;
@@ -227,7 +230,8 @@ export function updateFestivalSeo(festival: Festival, language: Language = 'en')
   const festTitle = language === 'en' ? festival.title : (festival.titleBn || festival.title);
   const pageTitle = `${festTitle} - Cultural Festival | ${SITE_NAME}`;
   const desc = language === 'en' ? festival.description : (festival.descriptionBn || festival.description);
-  const canonicalUrl = `${SITE_URL}/?festival=${festival.id}`;
+  const slug = getFestivalSlug(festival);
+  const canonicalUrl = `${SITE_URL}/festival/${slug}`;
 
   document.title = pageTitle;
   document.documentElement.lang = language;
@@ -262,7 +266,7 @@ export function updateFestivalSeo(festival: Festival, language: Language = 'en')
 }
 
 /**
- * Updates SEO metadata for an Experience
+ * Updates SEO metadata for an Experience (Route: /experience/:slug)
  */
 export function updateExperienceSeo(experience: Experience, language: Language = 'en') {
   if (typeof document === 'undefined' || !experience) return;
@@ -270,7 +274,8 @@ export function updateExperienceSeo(experience: Experience, language: Language =
   const expTitle = language === 'en' ? experience.title : (experience.titleBn || experience.title);
   const pageTitle = `${expTitle} - Travel Experience | ${SITE_NAME}`;
   const desc = language === 'en' ? experience.description : (experience.descriptionBn || experience.description);
-  const canonicalUrl = `${SITE_URL}/?experience=${experience.id}`;
+  const slug = getExperienceSlug(experience);
+  const canonicalUrl = `${SITE_URL}/experience/${slug}`;
 
   document.title = pageTitle;
   document.documentElement.lang = language;
@@ -279,6 +284,105 @@ export function updateExperienceSeo(experience: Experience, language: Language =
   setMetaTag("meta[property='og:title']", 'property', 'og:title', pageTitle);
   setMetaTag("meta[property='og:description']", 'property', 'og:description', desc);
   setMetaTag("meta[property='og:url']", 'property', 'og:url', canonicalUrl);
+
+  setCanonical(canonicalUrl);
+  setDynamicSchema(null);
+}
+
+/**
+ * Updates SEO metadata for a District / Category Page (Route: /district/:districtName)
+ */
+export function updateDistrictSeo(districtName: string, language: Language = 'en') {
+  if (typeof document === 'undefined' || !districtName) return;
+
+  const slug = getDistrictSlug(districtName);
+  const canonicalUrl = `${SITE_URL}/district/${slug}`;
+  const title =
+    language === 'en'
+      ? `${districtName} District Travel Guide & Tourist Places | ${SITE_NAME}`
+      : `${districtName} জেলার দর্শনীয় স্থান ও পর্যটন গাইড | ${SITE_NAME}`;
+  const desc =
+    language === 'en'
+      ? `Discover top attractions, travel spots, weather, culture, and tour guides in ${districtName} district of Bangladesh.`
+      : `বাংলাদেশের ${districtName} জেলার জনপ্রিয় পর্যটন কেন্দ্র, আবহাওয়া, হোটেল ও দর্শনীয় স্থানের সম্পূর্ণ তথ্য।`;
+
+  document.title = title;
+  document.documentElement.lang = language;
+
+  setMetaTag("meta[name='description']", 'name', 'description', desc);
+  setMetaTag("meta[property='og:title']", 'property', 'og:title', title);
+  setMetaTag("meta[property='og:description']", 'property', 'og:description', desc);
+  setMetaTag("meta[property='og:url']", 'property', 'og:url', canonicalUrl);
+  setMetaTag("meta[name='twitter:title']", 'name', 'twitter:title', title);
+  setMetaTag("meta[name='twitter:description']", 'name', 'twitter:description', desc);
+
+  setCanonical(canonicalUrl);
+  setDynamicSchema({
+    '@context': 'https://schema.org',
+    '@type': 'AdministrativeArea',
+    name: `${districtName} District`,
+    description: desc,
+    url: canonicalUrl,
+    addressCountry: 'BD',
+  });
+}
+
+/**
+ * Updates SEO metadata for Information Pages (Routes: /about, /contact, /privacy, /terms)
+ */
+export function updateInfoPageSeo(
+  page: 'about' | 'contact' | 'privacy' | 'terms',
+  language: Language = 'en'
+) {
+  if (typeof document === 'undefined') return;
+
+  const infoMap = {
+    about: {
+      titleEn: `About Bangladesh Tourism Board | National Tourism Portal`,
+      titleBn: `আমাদের সম্পর্কে | বাংলাদেশ জাতীয় পর্যটন বোর্ড`,
+      descEn: `Learn about the mission, heritage conservation initiatives, and national tourism promotion of the Bangladesh Tourism Board.`,
+      descBn: `বাংলাদেশ পর্যটন বোর্ডের পরিচিতি, লক্ষ্য এবং দেশের পর্যটন খাত বিকাশের জাতীয় পদক্ষেপ।`,
+      path: '/about',
+    },
+    contact: {
+      titleEn: `Contact Us & Tourist Police Helpline | ${SITE_NAME}`,
+      titleBn: `যোগাযোগ ও ট্যুরিস্ট পুলিশ হেল্পলাইন | ${SITE_NAME}`,
+      descEn: `Get official contact details, headquarters address, feedback desk, and 24/7 emergency tourist police hotlines in Bangladesh.`,
+      descBn: `বাংলাদেশ পর্যটন বোর্ডের অফিসিয়াল যোগাযোগ, ঠিকানা এবং জরুরি ট্যুরিস্ট পুলিশ হটলাইন নম্বর।`,
+      path: '/contact',
+    },
+    privacy: {
+      titleEn: `Privacy Policy | ${SITE_NAME}`,
+      titleBn: `গোপনীয়তা নীতি (Privacy Policy) | ${SITE_NAME}`,
+      descEn: `Read our comprehensive privacy policy regarding personal data handling, security, and cookies across the Bangladesh Tourism platform.`,
+      descBn: `বাংলাদেশ পর্যটন পোর্টালে ইউজারদের ব্যক্তিগত তথ্য ও ডেটা সুরক্ষার নীতিমালা।`,
+      path: '/privacy',
+    },
+    terms: {
+      titleEn: `Terms of Service & Travel Guidelines | ${SITE_NAME}`,
+      titleBn: `ব্যবহারের শর্তাবলী ও নিয়মাবলী | ${SITE_NAME}`,
+      descEn: `Terms of service, community guidelines, content contributions, and eco-tourism policies for visitors of Bangladesh Tourism.`,
+      descBn: `বাংলাদেশ পর্যটন ওয়েবসাইট ব্যবহারের শর্তাবলী, ভ্রমণ নির্দেশিকা ও কপিরাইট নিয়মাবলী।`,
+      path: '/terms',
+    },
+  };
+
+  const meta = infoMap[page];
+  if (!meta) return;
+
+  const title = language === 'en' ? meta.titleEn : meta.titleBn;
+  const desc = language === 'en' ? meta.descEn : meta.descBn;
+  const canonicalUrl = `${SITE_URL}${meta.path}`;
+
+  document.title = title;
+  document.documentElement.lang = language;
+
+  setMetaTag("meta[name='description']", 'name', 'description', desc);
+  setMetaTag("meta[property='og:title']", 'property', 'og:title', title);
+  setMetaTag("meta[property='og:description']", 'property', 'og:description', desc);
+  setMetaTag("meta[property='og:url']", 'property', 'og:url', canonicalUrl);
+  setMetaTag("meta[name='twitter:title']", 'name', 'twitter:title', title);
+  setMetaTag("meta[name='twitter:description']", 'name', 'twitter:description', desc);
 
   setCanonical(canonicalUrl);
   setDynamicSchema(null);
@@ -337,7 +441,7 @@ export function updateSectionSeo(section: string, language: Language = 'en') {
 
   const pageTitle = language === 'en' ? `${meta.titleEn} | ${SITE_NAME}` : `${meta.titleBn} | ${SITE_NAME}`;
   const desc = language === 'en' ? meta.descEn : meta.descBn;
-  const canonicalUrl = `${SITE_URL}/?section=${section}`;
+  const canonicalUrl = `${SITE_URL}/#${section}`;
 
   document.title = pageTitle;
   document.documentElement.lang = language;

@@ -75,7 +75,7 @@ export const StoryModal: React.FC<StoryModalProps> = ({
   };
 
   const handleCopyLink = async () => {
-    const success = await copyDirectLink('story', story.id);
+    const success = await copyDirectLink('story', story.id, story.title);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);

@@ -1,17 +1,75 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Language, Destination } from '../types';
-import { ArrowUpRight, Compass, Sparkles, Calendar, MapPin } from 'lucide-react';
+import { DESTINATIONS } from '../data/bangladeshData';
+import { ArrowUpRight, Compass, Sparkles, Calendar } from 'lucide-react';
+
+const FALLBACK_COXS_BAZAR =
+  DESTINATIONS.find((d) => d.id === 'coxs-bazar') ||
+  DESTINATIONS[0] || {
+    id: 'coxs-bazar',
+    title: "Cox's Bazar Sea Beach",
+    titleBn: 'কক্সবাজার সমুদ্র সৈকত',
+    tag: 'Coastline',
+    tagBn: 'উপকূলীয়',
+    summary: 'The longest natural sandy sea beach in the world, stretching over 120 unbroken kilometers along the Bay of Bengal.',
+    summaryBn: 'বিশ্বের দীর্ঘতম প্রাকৃতিক সমুদ্র সৈকত, যা বঙ্গোপসাগরের কোল ঘেঁষে ১২০ কিলোমিটারেরও বেশি বিস্তৃত।',
+    image: 'https://images.unsplash.com/photo-1588668214407-6ea9a6d8c272?auto=format&fit=crop&w=1200&q=80',
+    rating: 4.9,
+    division: 'Chittagong',
+    duration: '3-4 Days',
+    price: '৳5,000 - ৳20,000',
+    bestTime: 'Nov - Mar',
+    category: 'Beach',
+  };
+
+const FALLBACK_SYLHET =
+  DESTINATIONS.find((d) => d.id === 'sylhet-tea') ||
+  DESTINATIONS[1] || {
+    id: 'sylhet-tea',
+    title: 'Sylhet Tea Gardens & Sreemangal',
+    titleBn: 'সিলেট চা বাগান ও শ্রীমঙ্গল',
+    tag: 'Tea Highlands',
+    tagBn: 'চা বাগান',
+    summary: 'Lush green undulating tea estates, rainforest reserves, and tranquil wetland sanctuaries.',
+    summaryBn: 'সবুজ চা বাগান, রেইনফরেস্ট ও শান্ত হাওর জলাভূমির অপরূপ সৌন্দর্য।',
+    image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1200&q=80',
+    rating: 4.8,
+    division: 'Sylhet',
+    duration: '2-3 Days',
+    price: '৳4,000 - ৳15,000',
+    bestTime: 'Oct - Mar',
+    category: 'Nature',
+  };
+
+const FALLBACK_PAHARPUR =
+  DESTINATIONS.find((d) => d.id === 'paharpur') ||
+  DESTINATIONS[2] || {
+    id: 'paharpur',
+    title: 'Somapura Mahavihara, Paharpur',
+    titleBn: 'সোমপুর মহাবিহার, পাহাড়পুর',
+    tag: 'UNESCO Heritage',
+    tagBn: 'ইউনেস্কো ঐতিহ্য',
+    summary: 'A breathtaking 8th-century Buddhist monastery complex and one of the premier archaeological landmarks in South Asia.',
+    summaryBn: '৮ম শতাব্দীর প্রাচীনতম বৌদ্ধ বিহার এবং দক্ষিণ এশিয়ার অন্যতম গুরুত্বপূর্ণ প্রত্নতাত্ত্বিক নিদর্শন।',
+    image: 'https://images.unsplash.com/photo-1608889175123-8ee362201f81?auto=format&fit=crop&w=1200&q=80',
+    rating: 4.7,
+    division: 'Rajshahi',
+    duration: '1-2 Days',
+    price: '৳2,000 - ৳8,000',
+    bestTime: 'Oct - Feb',
+    category: 'Archaeology',
+  };
 
 interface HeroSectionProps {
   language: Language;
   onExploreClick: () => void;
   onPlanTripClick: () => void;
-  onSelectDestination: (dest: Destination) => void;
-  onSelectFestivalModal: () => void;
-  coxsBazar: Destination;
-  sylhet: Destination;
-  paharpur: Destination;
+  onSelectDestination?: (dest: Destination) => void;
+  onSelectFestivalModal?: () => void;
+  coxsBazar?: Destination;
+  sylhet?: Destination;
+  paharpur?: Destination;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
@@ -24,6 +82,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   sylhet,
   paharpur,
 }) => {
+  const activeCoxsBazar = coxsBazar || FALLBACK_COXS_BAZAR;
+  const activeSylhet = sylhet || FALLBACK_SYLHET;
+  const activePaharpur = paharpur || FALLBACK_PAHARPUR;
+
   return (
     <section id="hero-section" className="w-full px-4 md:px-8 lg:px-12 py-8 lg:py-12 overflow-hidden">
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-10 lg:gap-12">
@@ -118,7 +180,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.65, ease: [0.22, 1, 0.36, 1] }}
-            onClick={onSelectFestivalModal}
+            onClick={() => onSelectFestivalModal && onSelectFestivalModal()}
             className="flex items-center gap-5 p-4 sm:p-5 bg-white/70 backdrop-blur-sm border border-[#D8D0BC] rounded-2xl max-w-md shadow-xs hover:shadow-md hover:border-[#DE9B2E] transition-all cursor-pointer group"
           >
             <div
@@ -157,11 +219,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           {/* Main Showcase Image Card (Cox's Bazar) */}
           <div
             id="hero-main-showcase-card"
-            onClick={() => onSelectDestination(coxsBazar)}
+            onClick={() => onSelectDestination && onSelectDestination(activeCoxsBazar)}
             className="relative h-[340px] sm:h-[380px] rounded-[36px] sm:rounded-[40px] overflow-hidden shadow-2xl group cursor-pointer border border-[#D8D0BC]"
           >
             <img
-              src={coxsBazar.image}
+              src={activeCoxsBazar.image}
               alt={
                 language === 'en'
                   ? "Cox's Bazar Sea Beach - The world's longest natural sandy beach in Bangladesh"
@@ -177,13 +239,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             {/* Card Content Overlay */}
             <div className="absolute bottom-6 left-6 right-6 text-white">
               <span className="bg-[#DE9B2E] text-[#0A2A21] text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest mb-2.5 inline-block shadow-xs">
-                {language === 'en' ? coxsBazar.tag : coxsBazar.tagBn}
+                {language === 'en' ? activeCoxsBazar.tag : activeCoxsBazar.tagBn || activeCoxsBazar.tag}
               </span>
               <h3 className="text-2xl sm:text-3xl font-bold mb-1.5 font-serif leading-tight">
-                {language === 'en' ? coxsBazar.title : coxsBazar.titleBn}
+                {language === 'en' ? activeCoxsBazar.title : activeCoxsBazar.titleBn || activeCoxsBazar.title}
               </h3>
               <p className="text-xs sm:text-sm text-[#EDE8D6] line-clamp-2 leading-relaxed opacity-90">
-                {language === 'en' ? coxsBazar.summary : coxsBazar.summaryBn}
+                {language === 'en' ? activeCoxsBazar.summary : activeCoxsBazar.summaryBn || activeCoxsBazar.summary}
               </p>
             </div>
           </div>
@@ -193,18 +255,18 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             {/* Card 1: Sylhet Tea Gardens (Forest Green Tile) */}
             <div
               id="hero-subcard-sylhet"
-              onClick={() => onSelectDestination(sylhet)}
+              onClick={() => onSelectDestination && onSelectDestination(activeSylhet)}
               className="bg-[#0F3B2E] rounded-[28px] sm:rounded-[32px] p-5 sm:p-6 text-[#EDE8D6] flex flex-col justify-between shadow-lg relative overflow-hidden group cursor-pointer hover:bg-[#0A2A21] transition-all transform hover:-translate-y-1 min-h-[140px]"
             >
               <div className="text-3xl relative z-10 flex justify-between items-start">
                 <span>🛶</span>
                 <span className="text-xs font-bold text-[#DE9B2E] bg-white/10 px-2 py-0.5 rounded-full">
-                  ★ {sylhet.rating}
+                  ★ {activeSylhet.rating || 4.8}
                 </span>
               </div>
               <div className="relative z-10 mt-3">
                 <h4 className="text-base sm:text-lg font-bold text-white font-serif leading-snug">
-                  {language === 'en' ? 'Sylhet Tea Gardens' : 'সিলেট চা বাগান'}
+                  {language === 'en' ? activeSylhet.title : activeSylhet.titleBn || activeSylhet.title}
                 </h4>
                 <p className="text-[10px] uppercase font-bold tracking-widest text-[#DE9B2E] mt-0.5">
                   {language === 'en' ? 'Nature & Highlands' : 'প্রকৃতি ও পাহাড়'}
@@ -216,7 +278,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             {/* Card 2: Paharpur Vihara (White Tile) */}
             <div
               id="hero-subcard-paharpur"
-              onClick={() => onSelectDestination(paharpur)}
+              onClick={() => onSelectDestination && onSelectDestination(activePaharpur)}
               className="bg-white rounded-[28px] sm:rounded-[32px] p-5 sm:p-6 border border-[#D8D0BC] flex flex-col justify-between shadow-xs hover:shadow-md hover:border-[#DE9B2E] transition-all transform hover:-translate-y-1 min-h-[140px] group cursor-pointer"
             >
               <div className="text-3xl flex justify-between items-start">
@@ -227,7 +289,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               </div>
               <div className="mt-3">
                 <h4 className="text-base sm:text-lg font-bold text-[#0A2A21] font-serif leading-snug group-hover:text-[#8C3B2E] transition-colors">
-                  {language === 'en' ? 'Paharpur Vihara' : 'পাহাড়পুর বৌদ্ধ বিহার'}
+                  {language === 'en' ? activePaharpur.title : activePaharpur.titleBn || activePaharpur.title}
                 </h4>
                 <p className="text-[10px] uppercase font-bold tracking-widest text-[#4B554E] mt-0.5">
                   {language === 'en' ? 'Heritage Site' : 'প্রাচীন ঐতিহ্য'}

@@ -178,8 +178,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
 
   // Filter pending items (excluding expired)
-  const pendingStories = stories.filter((s) => (s.status === 'pending' || (!s.status && false)) && !isPendingExpired(s));
-  const pendingPosts = communityPosts.filter((p) => p.status === 'pending' && !isPendingExpired(p));
+  const pendingStories = (stories || []).filter((s) => (s.status === 'pending' || (!s.status && false)) && !isPendingExpired(s));
+  const pendingPosts = (communityPosts || []).filter((p) => p.status === 'pending' && !isPendingExpired(p));
   const totalPendingCount = pendingStories.length + pendingPosts.length;
 
   // Firebase Users Management State
@@ -199,7 +199,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [deleteReportConfirm, setDeleteReportConfirm] = useState<UserReport | null>(null);
   const [viewingImageModal, setViewingImageModal] = useState<string | null>(null);
 
-  const pendingReportsCount = userReports.filter((r) => r.status === 'pending').length;
+  const pendingReportsCount = (userReports || []).filter((r) => r.status === 'pending').length;
 
   // Newsletter Subscribers Management State
   const [subscribersList, setSubscribersList] = useState<NewsletterSubscriber[]>(() => getCachedSubscribers());

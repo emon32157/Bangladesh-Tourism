@@ -94,29 +94,31 @@ export const GisMapSection: React.FC<GisMapSectionProps> = ({
   }, [selectedDistrictFilter]);
 
   // Unique divisions & districts
+  const safeDestinations = destinations || [];
   const divisions = useMemo(() => {
-    const list = Array.from(new Set(destinations.map((d) => d.division).filter(Boolean)));
+    const list = Array.from(new Set(safeDestinations.map((d) => d?.division).filter(Boolean)));
     return list.sort();
-  }, [destinations]);
+  }, [safeDestinations]);
 
   const districts = useMemo(() => {
     const list = Array.from(
       new Set(
-        destinations
-          .map((d) => d.district || (language === 'en' ? d.title.split(' ')[0] : d.titleBn.split(' ')[0]))
+        safeDestinations
+          .map((d) => d?.district || (d?.title ? (language === 'en' ? d.title.split(' ')[0] : d.titleBn?.split(' ')[0] || d.title.split(' ')[0]) : ''))
           .filter(Boolean)
       )
     );
     return list.sort();
-  }, [destinations, language]);
+  }, [safeDestinations, language]);
 
   // Filtered destinations
   const filteredDestinations = useMemo(() => {
-    return destinations.filter((dest) => {
+    return safeDestinations.filter((dest) => {
+      if (!dest) return false;
       const matchSearch =
         !searchQuery ||
-        dest.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        dest.titleBn.includes(searchQuery) ||
+        (dest.title && dest.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (dest.titleBn && dest.titleBn.includes(searchQuery)) ||
         (dest.district && dest.district.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (dest.address && dest.address.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -126,14 +128,14 @@ export const GisMapSection: React.FC<GisMapSectionProps> = ({
         districtFilter === 'all' ||
         dest.district === districtFilter ||
         dest.districtBn === districtFilter ||
-        dest.title.toLowerCase().includes(districtFilter.toLowerCase()) ||
-        dest.titleBn.includes(districtFilter);
+        (dest.title && dest.title.toLowerCase().includes(districtFilter.toLowerCase())) ||
+        (dest.titleBn && dest.titleBn.includes(districtFilter));
 
       const matchCategory = categoryFilter === 'all' || dest.category === categoryFilter;
 
       return matchSearch && matchDivision && matchDistrict && matchCategory;
     });
-  }, [destinations, searchQuery, divisionFilter, districtFilter, categoryFilter]);
+  }, [safeDestinations, searchQuery, divisionFilter, districtFilter, categoryFilter]);
 
   // Calculate coordinates for destination
   const getDestinationCoords = (dest: Destination): [number, number] => {
@@ -237,7 +239,7 @@ export const GisMapSection: React.FC<GisMapSectionProps> = ({
 
       const popupContent = `
         <div style="font-family: system-ui, sans-serif; min-width: 220px; padding: 2px;">
-          <img src="${dest.image}" alt="${titleText}" style="width: 100%; height: 110px; object-fit: cover; border-radius: 12px; margin-bottom: 8px;" />
+          <img src="${dest.image || 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=400&q=80'}" alt="${titleText}" style="width: 100%; height: 110px; object-fit: cover; border-radius: 12px; margin-bottom: 8px;" />
           <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: bold; color: #0A2A21;">${titleText}</h4>
           <p style="margin: 0 0 6px 0; font-size: 11px; color: #4B554E;">📍 ${divisionText} ${dest.district ? '• ' + dest.district : ''}</p>
           <div style="display: flex; gap: 6px; margin-top: 8px;">
@@ -441,9 +443,9 @@ export const GisMapSection: React.FC<GisMapSectionProps> = ({
             {selectedMapDest ? (
               <div className="bg-white rounded-3xl border border-[#D8D0BC] p-5 shadow-md flex-1 flex flex-col justify-between space-y-4 animate-in fade-in duration-200">
                 <div className="space-y-3">
-                  <div className="relative h-44 rounded-2xl overflow-hidden">
+                  <div className="relative h-44 rounded-2xl overflow-hidden bg-neutral-100">
                     <img
-                      src={selectedMapDest.image}
+                      src={selectedMapDest.image || 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=600&q=80'}
                       alt={selectedMapDest.title}
                       className="w-full h-full object-cover"
                     />

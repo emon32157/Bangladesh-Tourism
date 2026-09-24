@@ -3,117 +3,94 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { generateSlug } from './slugs';
+import { SITE_URL } from './seo';
+
 /**
- * URL Synchronization and Deep-Linking Helper
- * Allows sharing and opening direct links to any destination, story, post, festival, experience, or view modal.
+ * Path-based Deep-Linking & URL Helper
+ * Provides path generation and clipboard copy for path-based routes:
+ * /destination/:slug, /post/:slug, /festival/:slug, /experience/:slug, /district/:districtName
  */
 
 export interface AppUrlState {
-  destinationId?: string | null;
-  storyId?: string | null;
-  postId?: string | null;
-  festivalId?: string | null;
-  experienceId?: string | null;
-  view?: 'planner' | 'wishlist' | 'search' | 'auth' | 'upload' | 'admin' | 'report' | 'story-submit' | 'write-story' | null;
+  destinationSlug?: string | null;
+  storySlug?: string | null;
+  postSlug?: string | null;
+  festivalSlug?: string | null;
+  experienceSlug?: string | null;
+  districtSlug?: string | null;
+  view?: 'about' | 'contact' | 'privacy' | 'terms' | 'planner' | 'wishlist' | 'search' | 'auth' | 'upload' | 'admin' | 'report' | 'story-submit' | null;
   section?: string | null;
   lang?: string | null;
 }
 
-export const parseUrlState = (): AppUrlState => {
-  if (typeof window === 'undefined') return {};
-  const params = new URLSearchParams(window.location.search);
-  const hash = window.location.hash.replace('#', '');
+/**
+ * Builds clean canonical path for any entity
+ */
+export function buildPath(
+  type: 'destination' | 'story' | 'post' | 'festival' | 'experience' | 'district' | 'about' | 'contact' | 'privacy' | 'terms',
+  slugOrId?: string,
+  title?: string
+): string {
+  if (type === 'about') return '/about';
+  if (type === 'contact') return '/contact';
+  if (type === 'privacy') return '/privacy';
+  if (type === 'terms') return '/terms';
 
-  return {
-    destinationId: params.get('destination') || (hash.startsWith('destination=') ? hash.split('=')[1] : null),
-    storyId: params.get('story') || (hash.startsWith('story=') ? hash.split('=')[1] : null),
-    postId: params.get('post') || (hash.startsWith('post=') ? hash.split('=')[1] : null),
-    festivalId: params.get('festival') || (hash.startsWith('festival=') ? hash.split('=')[1] : null),
-    experienceId: params.get('experience') || (hash.startsWith('experience=') ? hash.split('=')[1] : null),
-    view: (params.get('view') as AppUrlState['view']) || null,
-    section: params.get('section') || (hash && !hash.includes('=') ? hash : null),
-    lang: params.get('lang') || null,
-  };
-};
+  const cleanSlug = title ? generateSlug(title, slugOrId) : (slugOrId ? generateSlug(slugOrId) : '');
 
-export const setUrlState = (state: Partial<AppUrlState>, replace = false) => {
-  if (typeof window === 'undefined') return;
-
-  const url = new URL(window.location.href);
-  const params = url.searchParams;
-
-  // Clear modal-specific params
-  const modalKeys = ['destination', 'story', 'post', 'festival', 'experience', 'view'];
-  
-  // If we are setting a new modal param, clear other modal params to prevent conflicting URLs
-  const hasNewModal = Boolean(
-    state.destinationId || state.storyId || state.postId || state.festivalId || state.experienceId || state.view
-  );
-
-  if (hasNewModal) {
-    modalKeys.forEach((key) => params.delete(key));
+  switch (type) {
+    case 'destination':
+      return `/destination/${cleanSlug}`;
+    case 'story':
+    case 'post':
+      return `/post/${cleanSlug}`;
+    case 'festival':
+      return `/festival/${cleanSlug}`;
+    case 'experience':
+      return `/experience/${cleanSlug}`;
+    case 'district':
+      return `/district/${cleanSlug}`;
+    default:
+      return '/';
   }
-
-  if (state.destinationId !== undefined) {
-    if (state.destinationId) params.set('destination', state.destinationId);
-    else params.delete('destination');
-  }
-
-  if (state.storyId !== undefined) {
-    if (state.storyId) params.set('story', state.storyId);
-    else params.delete('story');
-  }
-
-  if (state.postId !== undefined) {
-    if (state.postId) params.set('post', state.postId);
-    else params.delete('post');
-  }
-
-  if (state.festivalId !== undefined) {
-    if (state.festivalId) params.set('festival', state.festivalId);
-    else params.delete('festival');
-  }
-
-  if (state.experienceId !== undefined) {
-    if (state.experienceId) params.set('experience', state.experienceId);
-    else params.delete('experience');
-  }
-
-  if (state.view !== undefined) {
-    if (state.view) params.set('view', state.view);
-    else params.delete('view');
-  }
-
-  if (state.section !== undefined) {
-    if (state.section && state.section !== 'hero') params.set('section', state.section);
-    else params.delete('section');
-  }
-
-  if (state.lang !== undefined) {
-    if (state.lang) params.set('lang', state.lang);
-    else params.delete('lang');
-  }
-
-  const newSearch = params.toString();
-  const newUrl = `${url.pathname}${newSearch ? `?${newSearch}` : ''}${url.hash ? url.hash : ''}`;
-
-  if (replace) {
-    window.history.replaceState({ ...state }, '', newUrl);
-  } else {
-    window.history.pushState({ ...state }, '', newUrl);
-  }
-};
+}
 
 /**
- * Generates and copies a direct link with fallback
+ * Copies a path-based direct link to clipboard (e.g. https://domain.com/destination/sundarbans-mangrove)
+ * Replaces query-string links with SEO-friendly path-based URLs.
  */
-export const copyDirectLink = async (paramKey: string, id: string): Promise<boolean> => {
+export const copyDirectLink = async (
+  paramKey: string,
+  idOrSlug: string,
+  title?: string
+): Promise<boolean> => {
   if (typeof window === 'undefined') return false;
 
-  const url = new URL(window.location.origin + window.location.pathname);
-  url.searchParams.set(paramKey, id);
+  const origin = window.location.origin && window.location.origin !== 'null'
+    ? window.location.origin
+    : SITE_URL;
 
-  const fullUrl = url.toString();
+  let path = '/';
+  const key = paramKey.toLowerCase();
+
+  if (key === 'destination') {
+    path = buildPath('destination', idOrSlug, title);
+  } else if (key === 'story' || key === 'post') {
+    path = buildPath('post', idOrSlug, title);
+  } else if (key === 'festival') {
+    path = buildPath('festival', idOrSlug, title);
+  } else if (key === 'experience') {
+    path = buildPath('experience', idOrSlug, title);
+  } else if (key === 'district') {
+    path = buildPath('district', idOrSlug, title);
+  } else if (key === 'about' || key === 'contact' || key === 'privacy' || key === 'terms') {
+    path = `/${key}`;
+  } else {
+    path = `/${key}/${idOrSlug}`;
+  }
+
+  const fullUrl = `${origin}${path}`;
 
   try {
     if (navigator.clipboard && window.isSecureContext) {

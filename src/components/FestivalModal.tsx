@@ -15,7 +15,7 @@ export const FestivalModal: React.FC<FestivalModalProps> = ({ festival, language
   if (!festival) return null;
 
   const handleCopyLink = async () => {
-    const success = await copyDirectLink('festival', festival.id);
+    const success = await copyDirectLink('festival', festival.id, festival.title);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);

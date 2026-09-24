@@ -35,44 +35,44 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const matchedDestinations = q
     ? (() => {
         const seen = new Set<string>();
-        return destinations.filter((d) => {
+        return (destinations || []).filter((d) => {
           if (!d || !d.id || seen.has(d.id)) return false;
           seen.add(d.id);
           return (
-            d.title.toLowerCase().includes(q) ||
-            d.titleBn.toLowerCase().includes(q) ||
-            d.division.toLowerCase().includes(q) ||
-            d.summary.toLowerCase().includes(q)
+            (d.title && d.title.toLowerCase().includes(q)) ||
+            (d.titleBn && d.titleBn.toLowerCase().includes(q)) ||
+            (d.division && d.division.toLowerCase().includes(q)) ||
+            (d.summary && d.summary.toLowerCase().includes(q))
           );
         });
       })()
     : [];
 
   const matchedExperiences = q
-    ? experiences.filter(
+    ? (experiences || []).filter(
         (e) =>
-          e.title.toLowerCase().includes(q) ||
-          e.titleBn.toLowerCase().includes(q) ||
-          e.location.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q)
+          (e.title && e.title.toLowerCase().includes(q)) ||
+          (e.titleBn && e.titleBn.toLowerCase().includes(q)) ||
+          (e.location && e.location.toLowerCase().includes(q)) ||
+          (e.description && e.description.toLowerCase().includes(q))
       )
     : [];
 
   const matchedFestivals = q
-    ? festivals.filter(
+    ? (festivals || []).filter(
         (f) =>
-          f.title.toLowerCase().includes(q) ||
-          f.titleBn.toLowerCase().includes(q) ||
-          f.description.toLowerCase().includes(q)
+          (f.title && f.title.toLowerCase().includes(q)) ||
+          (f.titleBn && f.titleBn.toLowerCase().includes(q)) ||
+          (f.description && f.description.toLowerCase().includes(q))
       )
     : [];
 
   const matchedStories = q
-    ? stories.filter(
+    ? (stories || []).filter(
         (s) =>
-          s.title.toLowerCase().includes(q) ||
-          s.titleBn.toLowerCase().includes(q) ||
-          s.excerpt.toLowerCase().includes(q)
+          (s.title && s.title.toLowerCase().includes(q)) ||
+          (s.titleBn && s.titleBn.toLowerCase().includes(q)) ||
+          (s.excerpt && s.excerpt.toLowerCase().includes(q))
       )
     : [];
 
@@ -170,9 +170,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                       >
                         <div className="flex items-center gap-3">
                           <img
-                            src={d.image}
-                            alt={d.title}
-                            className="w-12 h-12 rounded-xl object-cover"
+                            src={d.image || 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=400&q=80'}
+                            alt={d.title || 'Destination'}
+                            className="w-12 h-12 rounded-xl object-cover bg-neutral-100"
                             referrerPolicy="no-referrer"
                           />
                           <div>
