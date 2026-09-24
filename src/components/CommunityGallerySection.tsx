@@ -235,11 +235,6 @@ export const CommunityGallerySection: React.FC<CommunityGallerySectionProps> = (
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-serif font-bold text-[#0A2A21] tracking-tight">
             {language === 'en' ? 'Through the Lens of Travelers' : 'ভ্রমণপিপাসুদের চোখে বাংলাদেশ'}
           </h2>
-          <p className="mt-2 text-base text-[#4B554E] max-w-2xl font-sans">
-            {language === 'en'
-              ? 'Real travel photos and chronicles uploaded by our explorer community via ImgBB API & Firebase Realtime.'
-              : 'ImgBB API এবং ফায়ারবেস ক্লাউডের মাধ্যমে ভ্রমণকারীদের আপলোডকৃত আসল ছবি ও ভ্রমণ অভিজ্ঞতা।'}
-          </p>
         </div>
 
         {/* Upload Action Button */}

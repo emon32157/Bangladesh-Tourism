@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Destination, Language } from '../types';
-import { MapPin, ArrowRight, Building2, Sparkles, Navigation } from 'lucide-react';
+import { MapPin, ArrowRight, Building2, Sparkles, Navigation, Check } from 'lucide-react';
+import { isDestinationInDistrict } from '../lib/districtMatcher';
 
 interface DistrictsSectionProps {
   destinations?: Destination[];
   language: Language;
+  selectedDistrict?: string | null;
   onSelectDistrict: (districtName: string) => void;
 }
 
@@ -128,18 +130,27 @@ const DIVISIONS_DATA: { nameEn: string; nameBn: string; districts: { en: string;
 export const DistrictsSection: React.FC<DistrictsSectionProps> = ({
   destinations = [],
   language,
+  selectedDistrict,
   onSelectDistrict,
 }) => {
   const [activeDivision, setActiveDivision] = useState<string>('all');
 
-  // Count destinations per district
+  // Count destinations per district using centralized matcher
   const getCountForDistrict = (distEn: string, distBn: string) => {
-    return (destinations || []).filter(
-      (d) =>
-        (d?.district && (d.district.toLowerCase() === distEn.toLowerCase() || d.district === distBn)) ||
-        (d?.title && d.title.toLowerCase().includes(distEn.toLowerCase())) ||
-        (d?.titleBn && d.titleBn.includes(distBn))
+    return (destinations || []).filter((d) =>
+      isDestinationInDistrict(d, distEn, distBn)
     ).length;
+  };
+
+  const handleDistrictClick = (distEn: string) => {
+    onSelectDistrict(distEn);
+    // Explicitly scroll smoothly to #destinations with navbar offset
+    const el = document.getElementById('destinations');
+    if (el) {
+      const yOffset = -90;
+      const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    }
   };
 
   return (
@@ -246,6 +257,11 @@ export const DistrictsSection: React.FC<DistrictsSectionProps> = ({
                   const count = getCountForDistrict(dist.en, dist.bn);
                   const distName = language === 'en' ? dist.en : dist.bn;
 
+                  const isSelected = !!selectedDistrict && (
+                    selectedDistrict.toLowerCase() === dist.en.toLowerCase() ||
+                    selectedDistrict === dist.bn
+                  );
+
                   return (
                     <motion.button
                       key={dist.en}
@@ -255,18 +271,30 @@ export const DistrictsSection: React.FC<DistrictsSectionProps> = ({
                       viewport={{ once: true }}
                       transition={{ duration: 0.25, delay: (idx % 6) * 0.03 }}
                       whileHover={{ y: -2, scale: 1.02, transition: { duration: 0.15 } }}
-                      onClick={() => onSelectDistrict(dist.en)}
-                      className="group p-3 rounded-2xl bg-[#F6F3EA]/70 hover:bg-white border border-[#D8D0BC] hover:border-[#0F3B2E] hover:shadow-sm transition-all text-left flex flex-col justify-between cursor-pointer space-y-1.5"
+                      onClick={() => handleDistrictClick(dist.en)}
+                      className={`group p-3 rounded-2xl transition-all text-left flex flex-col justify-between cursor-pointer space-y-1.5 ${
+                        isSelected
+                          ? 'bg-white ring-2 ring-[#0F3B2E] border-[#0F3B2E] shadow-md'
+                          : 'bg-[#F6F3EA]/70 hover:bg-white border border-[#D8D0BC] hover:border-[#0F3B2E] hover:shadow-sm'
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-1">
-                        <span className="font-bold text-xs sm:text-sm text-[#0A2A21] group-hover:text-[#8C3B2E] transition-colors truncate">
+                        <span className={`font-bold text-xs sm:text-sm truncate transition-colors ${
+                          isSelected ? 'text-[#8C3B2E] font-black' : 'text-[#0A2A21] group-hover:text-[#8C3B2E]'
+                        }`}>
                           {distName}
                         </span>
-                        <Navigation className="w-3 h-3 text-[#DE9B2E] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        {isSelected ? (
+                          <span className="p-0.5 rounded-full bg-[#0F3B2E] text-white shrink-0">
+                            <Check className="w-2.5 h-2.5" />
+                          </span>
+                        ) : (
+                          <Navigation className="w-3 h-3 text-[#DE9B2E] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        )}
                       </div>
 
                       <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-[#6B756E] pt-1 border-t border-[#D8D0BC]/50">
-                        <span className="truncate">
+                        <span className={`truncate ${isSelected ? 'font-bold text-[#0F3B2E]' : ''}`}>
                           {count > 0 ? `${count} ${language === 'en' ? 'places' : 'স্থান'}` : language === 'en' ? 'Explore' : 'দেখুন'}
                         </span>
                         <ArrowRight className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-[#0F3B2E] group-hover:translate-x-1 transition-transform shrink-0" />

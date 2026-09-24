@@ -55,8 +55,12 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
-  const [cardsPerView, setCardsPerView] = useState(3);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+
+  // Touch swipe references for mobile
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
 
   // Pick top 4 recent destinations (posts) and top 4 recent editorial stories
   const recentPosts = (destinations || []).slice(0, 4);
@@ -75,29 +79,70 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
       ? recentStories.map((s) => ({ id: `story-${s.id}`, type: 'story' as const, item: s }))
       : allItems;
 
-  // Responsive cards per view
+  // Measure container width dynamically with ResizeObserver
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 640) {
-        setCardsPerView(1);
-      } else if (window.innerWidth < 1024) {
-        setCardsPerView(2);
-      } else {
-        setCardsPerView(3);
+    if (!containerRef.current) return;
+
+    const updateWidth = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.clientWidth);
       }
     };
 
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    updateWidth();
+
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0) {
+          setContainerWidth(entry.contentRect.width);
+        }
+      }
+    });
+
+    ro.observe(containerRef.current);
+    window.addEventListener('resize', updateWidth);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
   }, []);
+
+  // Determine cards per view based on real container width
+  const cardsPerView =
+    containerWidth > 0
+      ? containerWidth < 640
+        ? 1
+        : containerWidth < 1024
+        ? 2
+        : 3
+      : typeof window !== 'undefined'
+      ? window.innerWidth < 640
+        ? 1
+        : window.innerWidth < 1024
+        ? 2
+        : 3
+      : 1;
+
+  const gap = cardsPerView === 1 ? 16 : 24;
+
+  const cardWidth =
+    containerWidth > 0
+      ? cardsPerView === 1
+        ? containerWidth
+        : (containerWidth - (cardsPerView - 1) * gap) / cardsPerView
+      : 0;
 
   const maxIndex = Math.max(0, filteredItems.length - cardsPerView);
 
-  // Reset index if out of bounds on filter change
+  // Reset or clamp index if out of bounds on filter change or resize
   useEffect(() => {
     setCurrentIndex(0);
   }, [activeFilter]);
+
+  useEffect(() => {
+    setCurrentIndex((prev) => Math.min(prev, maxIndex));
+  }, [maxIndex]);
 
   // Auto-play timer
   useEffect(() => {
@@ -116,6 +161,27 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
 
   const handleNext = () => {
     setCurrentIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+  };
+
+  // Touch gesture handlers for mobile swipe
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current === null || touchEndX.current === null) return;
+    const distance = touchStartX.current - touchEndX.current;
+    if (distance > 45) {
+      handleNext();
+    } else if (distance < -45) {
+      handlePrev();
+    }
+    touchStartX.current = null;
+    touchEndX.current = null;
   };
 
   return (
@@ -229,11 +295,18 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
         </div>
 
         {/* Carousel Slider Window */}
-        <div ref={containerRef} className="relative overflow-hidden pt-1 pb-2">
-          <motion.div
-            className="flex gap-6 transition-transform duration-500 ease-out"
+        <div
+          ref={containerRef}
+          className="relative overflow-hidden pt-1 pb-2 touch-pan-y select-none"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div
+            className="flex transition-transform duration-500 ease-out will-change-transform"
             style={{
-              transform: `translateX(-${currentIndex * (100 / cardsPerView + (cardsPerView > 1 ? (cardsPerView === 2 ? 1.5 : 2) : 0))}%)`,
+              gap: `${gap}px`,
+              transform: `translate3d(-${currentIndex * (cardWidth + gap)}px, 0, 0)`,
             }}
           >
             {filteredItems.map((slide) => {
@@ -250,7 +323,11 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
                 return (
                   <div
                     key={slide.id}
-                    className="shrink-0 w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
+                    className="shrink-0"
+                    style={{
+                      width: cardWidth > 0 ? `${cardWidth}px` : '100%',
+                      maxWidth: cardWidth > 0 ? `${cardWidth}px` : '100%',
+                    }}
                   >
                     <motion.article
                       whileHover={{ y: -6 }}
@@ -360,7 +437,11 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
                 return (
                   <div
                     key={slide.id}
-                    className="shrink-0 w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
+                    className="shrink-0"
+                    style={{
+                      width: cardWidth > 0 ? `${cardWidth}px` : '100%',
+                      maxWidth: cardWidth > 0 ? `${cardWidth}px` : '100%',
+                    }}
                   >
                     <motion.article
                       whileHover={{ y: -6 }}
@@ -453,7 +534,7 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
                 );
               }
             })}
-          </motion.div>
+          </div>
         </div>
 
         {/* Bottom Indicator Dots & Quick Counter */}
@@ -462,7 +543,7 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
             <span className="text-xs font-bold text-[#4B554E]">
               {language === 'en' ? 'Slide:' : 'স্লাইড:'}
             </span>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {Array.from({ length: maxIndex + 1 }).map((_, dotIdx) => (
                 <button
                   key={dotIdx}
@@ -485,8 +566,12 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>
                 {language === 'en'
-                  ? `${currentIndex + 1} - ${Math.min(currentIndex + cardsPerView, filteredItems.length)} of ${filteredItems.length} items`
-                  : `${filteredItems.length}টির মধ্যে ${currentIndex + 1} - ${Math.min(currentIndex + cardsPerView, filteredItems.length)}টি প্রদর্শিত`}
+                  ? cardsPerView === 1
+                    ? `${currentIndex + 1} of ${filteredItems.length} items`
+                    : `${currentIndex + 1} - ${Math.min(currentIndex + cardsPerView, filteredItems.length)} of ${filteredItems.length} items`
+                  : cardsPerView === 1
+                    ? `${filteredItems.length}টির মধ্যে ${currentIndex + 1} নম্বর আইটেম`
+                    : `${filteredItems.length}টির মধ্যে ${currentIndex + 1} - ${Math.min(currentIndex + cardsPerView, filteredItems.length)}টি প্রদর্শিত`}
               </span>
             </span>
 

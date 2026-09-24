@@ -90,6 +90,7 @@ import {
   getDistrictSlug,
   findDistrictBySlug,
 } from './lib/slugs';
+import { getCanonicalDistrict } from './lib/districtMatcher';
 
 function dedupeById<T extends { id: string }>(items: T[]): T[] {
   const seen = new Set<string>();
@@ -327,11 +328,17 @@ function MainAppContent() {
       if (matchedDistrict) {
         setSelectedDistrictFilter(matchedDistrict);
         updateDistrictSeo(matchedDistrict, language);
-        const destSection = document.getElementById('destinations');
-        if (destSection) {
-          destSection.scrollIntoView({ behavior: 'smooth' });
-        }
+        setTimeout(() => {
+          const destSection = document.getElementById('destinations');
+          if (destSection) {
+            const yOffset = -90;
+            const y = destSection.getBoundingClientRect().top + window.pageYOffset + yOffset;
+            window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+          }
+        }, 100);
       }
+    } else {
+      setSelectedDistrictFilter(null);
     }
 
     // 6. Info Pages: /about, /contact, /privacy, /terms
@@ -438,13 +445,33 @@ function MainAppContent() {
   };
 
   const handleSelectDistrict = (districtName: string) => {
-    setSelectedDistrictFilter(districtName);
-    navigate(`/district/${getDistrictSlug(districtName)}`);
+    const canonical = getCanonicalDistrict(districtName);
+    const targetName = canonical ? canonical.nameEn : districtName;
+    setSelectedDistrictFilter(targetName);
+    navigate(`/district/${getDistrictSlug(targetName)}`);
+    // Immediately scroll to destinations section with sticky navbar offset
+    setTimeout(() => {
+      const el = document.getElementById('destinations');
+      if (el) {
+        const yOffset = -90;
+        const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+      }
+    }, 50);
   };
 
   const handleClearDistrictFilter = () => {
     setSelectedDistrictFilter(null);
     navigate('/');
+    // Smoothly scroll back to destinations section
+    setTimeout(() => {
+      const el = document.getElementById('destinations');
+      if (el) {
+        const yOffset = -90;
+        const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+      }
+    }, 50);
   };
 
   const handleOpenInfoPage = (page: InfoPageType | null) => {
@@ -881,22 +908,6 @@ function MainAppContent() {
           onToggleSave={toggleSave}
         />
 
-        {/* 64 Districts Live Weather & Interactive Showcase */}
-        <DistrictsSection
-          destinations={destinations}
-          language={language}
-          onSelectDistrict={handleSelectDistrict}
-        />
-
-        {/* Interactive GIS Map Section with 64 Districts */}
-        <GisMapSection
-          language={language}
-          destinations={destinations}
-          onSelectDestination={handleSelectDestination}
-          selectedDistrictFilter={selectedDistrictFilter}
-          onClearDistrictFilter={handleClearDistrictFilter}
-        />
-
         {/* All Tourist Places Grid (480+ Places with 64-District Filter & Load More) */}
         <DestinationsGrid
           destinations={destinations}
@@ -951,6 +962,23 @@ function MainAppContent() {
           onSelectPost={handleSelectPost}
           savedIds={savedIds}
           onToggleSave={toggleSave}
+        />
+
+        {/* 64 Districts Live Weather & Interactive Showcase */}
+        <DistrictsSection
+          destinations={destinations}
+          language={language}
+          selectedDistrict={selectedDistrictFilter}
+          onSelectDistrict={handleSelectDistrict}
+        />
+
+        {/* Interactive GIS Map Section with 64 Districts */}
+        <GisMapSection
+          language={language}
+          destinations={destinations}
+          onSelectDestination={handleSelectDestination}
+          selectedDistrictFilter={selectedDistrictFilter}
+          onClearDistrictFilter={handleClearDistrictFilter}
         />
       </main>
 

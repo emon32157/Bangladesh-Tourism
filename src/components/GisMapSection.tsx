@@ -4,6 +4,7 @@ import { Destination, Language } from '../types';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Search, Compass, ExternalLink, Navigation, Layers, Sparkles, Filter, RotateCcw } from 'lucide-react';
+import { getCanonicalDistrict, isDestinationInDistrict } from '../lib/districtMatcher';
 
 interface GisMapSectionProps {
   destinations: Destination[];
@@ -90,6 +91,8 @@ export const GisMapSection: React.FC<GisMapSectionProps> = ({
   useEffect(() => {
     if (selectedDistrictFilter) {
       setDistrictFilter(selectedDistrictFilter);
+    } else {
+      setDistrictFilter('all');
     }
   }, [selectedDistrictFilter]);
 
@@ -113,6 +116,10 @@ export const GisMapSection: React.FC<GisMapSectionProps> = ({
 
   // Filtered destinations
   const filteredDestinations = useMemo(() => {
+    const canonical = districtFilter !== 'all' ? getCanonicalDistrict(districtFilter) : null;
+    const targetEn = canonical ? canonical.nameEn : districtFilter;
+    const targetBn = canonical ? canonical.nameBn : districtFilter;
+
     return safeDestinations.filter((dest) => {
       if (!dest) return false;
       const matchSearch =
@@ -126,10 +133,7 @@ export const GisMapSection: React.FC<GisMapSectionProps> = ({
 
       const matchDistrict =
         districtFilter === 'all' ||
-        dest.district === districtFilter ||
-        dest.districtBn === districtFilter ||
-        (dest.title && dest.title.toLowerCase().includes(districtFilter.toLowerCase())) ||
-        (dest.titleBn && dest.titleBn.includes(districtFilter));
+        isDestinationInDistrict(dest, targetEn, targetBn);
 
       const matchCategory = categoryFilter === 'all' || dest.category === categoryFilter;
 

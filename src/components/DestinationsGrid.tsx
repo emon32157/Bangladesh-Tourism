@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Destination, DestinationCategory, Language } from '../types';
-import { Bookmark, Star, ArrowRight, Clock, MapPin, Sparkles, Eye, ChevronDown, ChevronUp, Video } from 'lucide-react';
+import { Bookmark, Star, ArrowRight, Clock, MapPin, Sparkles, Eye, ChevronDown, ChevronUp, Video, X, Compass, Filter } from 'lucide-react';
+import { getCanonicalDistrict, isDestinationInDistrict } from '../lib/districtMatcher';
 
 interface DestinationsGridProps {
   destinations: Destination[];
@@ -9,6 +10,9 @@ interface DestinationsGridProps {
   onSelectDestination: (dest: Destination) => void;
   savedIds: string[];
   onToggleSave: (id: string, e: React.MouseEvent) => void;
+  onPlanTrip?: (dest: Destination) => void;
+  selectedDistrictFilter?: string | null;
+  onClearDistrictFilter?: () => void;
 }
 
 export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
@@ -17,10 +21,28 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
   onSelectDestination,
   savedIds,
   onToggleSave,
+  onPlanTrip,
+  selectedDistrictFilter,
+  onClearDistrictFilter,
 }) => {
   const PAGE_SIZE = 6;
   const [activeCategory, setActiveCategory] = useState<DestinationCategory>('all');
   const [visibleCount, setVisibleCount] = useState<number>(PAGE_SIZE);
+
+  // Canonical district info for selectedDistrictFilter
+  const canonicalDistrict = useMemo(() => {
+    return getCanonicalDistrict(selectedDistrictFilter);
+  }, [selectedDistrictFilter]);
+
+  // When selected district filter changes, show all attractions for that district immediately and reset category
+  useEffect(() => {
+    if (selectedDistrictFilter) {
+      setActiveCategory('all');
+      setVisibleCount(24);
+    } else {
+      setVisibleCount(PAGE_SIZE);
+    }
+  }, [selectedDistrictFilter]);
 
   const categories: { id: DestinationCategory; labelEn: string; labelBn: string }[] = [
     { id: 'all', labelEn: 'All Wonders', labelBn: 'সকল দর্শনীয় স্থান' },
@@ -31,17 +53,29 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
     { id: 'river', labelEn: 'River Journeys', labelBn: 'নদীমাতৃক ভ্রমণ' },
   ];
 
+  // 1. Filter by district if selected
+  const districtFilteredDestinations = useMemo(() => {
+    if (!selectedDistrictFilter) return destinations || [];
+    const targetEn = canonicalDistrict ? canonicalDistrict.nameEn : selectedDistrictFilter;
+    const targetBn = canonicalDistrict ? canonicalDistrict.nameBn : selectedDistrictFilter;
+
+    return (destinations || []).filter((dest) =>
+      isDestinationInDistrict(dest, targetEn, targetBn)
+    );
+  }, [destinations, selectedDistrictFilter, canonicalDistrict]);
+
+  // 2. Filter by category
   const filteredDestinations = useMemo(() => {
     const seen = new Set<string>();
-    return (destinations || []).filter((dest) => {
+    return districtFilteredDestinations.filter((dest) => {
       if (!dest || !dest.id || seen.has(dest.id)) return false;
       seen.add(dest.id);
       if (activeCategory === 'all') return true;
       return dest.category === activeCategory;
     });
-  }, [destinations, activeCategory]);
+  }, [districtFilteredDestinations, activeCategory]);
 
-  // Initial 6 items, clicking LOAD MORE appends 6 more items continuously
+  // Sliced items for display
   const displayedDestinations = useMemo(() => {
     return filteredDestinations.slice(0, visibleCount);
   }, [filteredDestinations, visibleCount]);
@@ -111,8 +145,11 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
     );
   };
 
+  const districtDisplayNameEn = canonicalDistrict?.nameEn || selectedDistrictFilter;
+  const districtDisplayNameBn = canonicalDistrict?.nameBn || selectedDistrictFilter;
+
   return (
-    <section id="destinations" className="w-full px-4 md:px-8 lg:px-12 py-16 border-t border-[#D8D0BC] bg-[#F6F3EA] overflow-hidden">
+    <section id="destinations" className="w-full px-4 md:px-8 lg:px-12 py-16 border-t border-[#D8D0BC] bg-[#F6F3EA] overflow-hidden scroll-mt-20">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Section Header */}
         <motion.div
@@ -125,15 +162,27 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#0F3B2E]/10 text-[#0F3B2E] rounded-full text-[11px] font-extrabold uppercase tracking-widest border border-[#0F3B2E]/20">
               <Sparkles className="w-3.5 h-3.5 text-[#DE9B2E]" />
-              {language === 'en' ? 'Curated Catalog' : 'নির্বাচিত গন্তব্য'}
+              {selectedDistrictFilter
+                ? (language === 'en' ? `${districtDisplayNameEn} Explorer` : `${districtDisplayNameBn} জেলা গাইড`)
+                : (language === 'en' ? 'Curated Catalog' : 'নির্বাচিত গন্তব্য')}
             </div>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold font-serif text-[#0A2A21] tracking-tight">
-              {language === 'en' ? 'Iconic Destinations of Bengal' : 'বাংলার প্রধান পর্যটন গন্তব্যসমূহ'}
+              {selectedDistrictFilter
+                ? (language === 'en'
+                    ? `Tourist Attractions in ${districtDisplayNameEn}`
+                    : `${districtDisplayNameBn} জেলার পর্যটন স্থানসমূহ`)
+                : (language === 'en'
+                    ? 'Iconic Destinations of Bengal'
+                    : 'বাংলার প্রধান পর্যটন গন্তব্যসমূহ')}
             </h2>
             <p className="text-[#4B554E] max-w-xl text-sm sm:text-base leading-relaxed">
-              {language === 'en'
-                ? 'From mist-veiled highland peaks and ancient Buddhist viharas to tidal rainforests and unending golden shorelines.'
-                : 'কুয়াশাঘেরা সবুজ পাহাড়ের চূড়া, প্রাচীন প্রত্নতাত্ত্বিক নিদর্শন থেকে শুরু করে রহস্যময় ম্যানগ্রোভ বন ও অবিরাম সোনালী সমুদ্রতট।'}
+              {selectedDistrictFilter
+                ? (language === 'en'
+                    ? `Explore the iconic heritage landmarks, natural wonders, and attractions in ${districtDisplayNameEn} district.`
+                    : `${districtDisplayNameBn} জেলার সকল ঐতিহাসিক নিদর্শন, নয়নাভিরাম প্রাকৃতিক সৌন্দর্য এবং দর্শনীয় স্থানসমূহ ঘুরে দেখুন।`)
+                : (language === 'en'
+                    ? 'From mist-veiled highland peaks and ancient Buddhist viharas to tidal rainforests and unending golden shorelines.'
+                    : 'কুয়াশাঘেরা সবুজ পাহাড়ের চূড়া, প্রাচীন প্রত্নতাত্ত্বিক নিদর্শন থেকে শুরু করে রহস্যময় ম্যানগ্রোভ বন ও অবিরাম সোনালী সমুদ্রতট।')}
             </p>
           </div>
 
@@ -145,6 +194,72 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
             </span>
           </div>
         </motion.div>
+
+        {/* Active District Filter Highlight Banner */}
+        {selectedDistrictFilter && (
+          <motion.div
+            initial={{ opacity: 0, y: -12, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.4 }}
+            className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-[#0F3B2E] via-[#144738] to-[#0A2A21] text-white border border-[#DE9B2E]/40 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-[#DE9B2E]/20 border border-[#DE9B2E]/40 flex items-center justify-center shrink-0 shadow-inner">
+                <MapPin className="w-6 h-6 text-[#DE9B2E]" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#DE9B2E]">
+                    {language === 'en' ? 'Filtered by District' : 'জেলা অনুযায়ী প্রদর্শিত'}
+                  </span>
+                  {canonicalDistrict && (
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-white/10 text-white/90 border border-white/15">
+                      {language === 'en' ? canonicalDistrict.divisionEn : canonicalDistrict.divisionBn}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-xl sm:text-2xl font-bold font-serif text-white tracking-tight flex items-center gap-2 mt-0.5">
+                  <span>{language === 'en' ? districtDisplayNameEn : districtDisplayNameBn}</span>
+                  <span className="text-sm font-normal text-white/70">
+                    ({language === 'en' ? districtDisplayNameBn : districtDisplayNameEn})
+                  </span>
+                </h3>
+                <p className="text-xs sm:text-sm text-white/80 mt-0.5">
+                  {language === 'en'
+                    ? `Found ${districtFilteredDestinations.length} tourist spots in this district`
+                    : `এই জেলায় মোট ${districtFilteredDestinations.length}টি দর্শনীয় স্থান পাওয়া গেছে`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 self-end md:self-center shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const mapEl = document.getElementById('gis-map');
+                  if (mapEl) {
+                    mapEl.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }}
+                className="px-4 py-2 rounded-full text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Compass className="w-3.5 h-3.5 text-[#DE9B2E]" />
+                <span>{language === 'en' ? 'View on GIS Map' : 'ম্যাপে দেখুন'}</span>
+              </button>
+
+              {onClearDistrictFilter && (
+                <button
+                  type="button"
+                  onClick={onClearDistrictFilter}
+                  className="px-4 py-2 rounded-full text-xs font-bold text-[#0A2A21] bg-[#DE9B2E] hover:bg-[#c78822] transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? 'Show All Districts' : 'সকল জেলা দেখুন'}</span>
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
 
         {/* Category Filters Pill Bar */}
         <motion.div
@@ -176,6 +291,39 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
             );
           })}
         </motion.div>
+
+        {/* Empty state when category in district has 0 spots */}
+        {filteredDestinations.length === 0 && (
+          <div className="p-8 sm:p-12 text-center rounded-3xl bg-white border border-[#D8D0BC] space-y-4">
+            <MapPin className="w-10 h-10 text-[#DE9B2E] mx-auto opacity-80" />
+            <h4 className="text-lg font-bold text-[#0A2A21]">
+              {language === 'en' ? 'No attractions found for this category' : 'এই ক্যাটাগরিতে কোনো স্থান পাওয়া যায়নি'}
+            </h4>
+            <p className="text-sm text-[#4B554E] max-w-md mx-auto">
+              {language === 'en'
+                ? `No ${activeCategory} attractions found in ${districtDisplayNameEn}. View all ${districtFilteredDestinations.length} spots in this district.`
+                : `নির্বাচিত ক্যাটাগরিতে এই জেলায় কোনো স্থান নেই। এই জেলার সকল স্থান দেখতে নিচের বোতাম চাপুন।`}
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveCategory('all')}
+                className="px-5 py-2.5 rounded-full bg-[#0F3B2E] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#0A2A21] transition-all cursor-pointer"
+              >
+                {language === 'en' ? 'View All District Spots' : 'জেলার সকল স্থান দেখুন'}
+              </button>
+              {onClearDistrictFilter && (
+                <button
+                  type="button"
+                  onClick={onClearDistrictFilter}
+                  className="px-5 py-2.5 rounded-full bg-white border border-[#D8D0BC] text-[#0A2A21] text-xs font-bold uppercase tracking-wider hover:bg-[#F6F3EA] transition-all cursor-pointer"
+                >
+                  {language === 'en' ? 'Show All Districts' : 'সকল জেলা দেখুন'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Destinations Grid: 2 Columns Across All Breakpoints (Mobile, Tablet, Desktop) */}
         <div
