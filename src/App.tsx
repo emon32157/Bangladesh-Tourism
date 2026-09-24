@@ -870,6 +870,17 @@ function MainAppContent() {
           paharpur={destinations.find((d) => d.id === 'paharpur') || destinations[2]}
         />
 
+        {/* Recent Tourist Attractions & Stories Showcase Slider */}
+        <RecentShowcaseSlider
+          destinations={destinations}
+          stories={stories}
+          language={language}
+          onSelectDestination={handleSelectDestination}
+          onSelectStory={handleSelectStory}
+          savedIds={savedIds}
+          onToggleSave={toggleSave}
+        />
+
         {/* 64 Districts Live Weather & Interactive Showcase */}
         <DistrictsSection
           destinations={destinations}
@@ -896,17 +907,6 @@ function MainAppContent() {
           onPlanTrip={handlePlanTripForDestination}
           selectedDistrictFilter={selectedDistrictFilter}
           onClearDistrictFilter={handleClearDistrictFilter}
-        />
-
-        {/* Recent 10 Tourist Attractions Showcase Slider */}
-        <RecentShowcaseSlider
-          destinations={destinations}
-          stories={stories}
-          language={language}
-          onSelectDestination={handleSelectDestination}
-          onSelectStory={handleSelectStory}
-          savedIds={savedIds}
-          onToggleSave={toggleSave}
         />
 
         {/* Things To Do & Curated Experiences */}

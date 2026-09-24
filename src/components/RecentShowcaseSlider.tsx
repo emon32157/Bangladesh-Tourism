@@ -121,7 +121,7 @@ export const RecentShowcaseSlider: React.FC<RecentShowcaseSliderProps> = ({
   return (
     <section
       id="recent-showcase-slider"
-      className="w-full px-4 md:px-8 lg:px-12 py-12 md:py-16 bg-gradient-to-b from-[#F6F3EA] via-white to-[#F6F3EA] border-b border-[#D8D0BC] overflow-hidden"
+      className="w-full px-4 md:px-8 lg:px-12 py-12 md:py-16 bg-gradient-to-b from-[#F6F3EA] via-white to-[#F6F3EA] border-t border-[#D8D0BC] overflow-hidden"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
