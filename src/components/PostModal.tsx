@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { CommunityPost, Language, AppUser } from '../types';
+import { CommunityPost, Language, AppUser, AdSlotConfig } from '../types';
 import { MapPin, X, Share2, Check, ArrowLeft, Bookmark, Video, Image as ImageIcon } from 'lucide-react';
 import { SocialInteractionBox } from './SocialInteractionBox';
 import { VideoPlayer } from './VideoPlayer';
 import { copyDirectLink } from '../lib/urlSync';
+import { AdRenderer } from './AdRenderer';
 
 interface PostModalProps {
   post: CommunityPost | null;
@@ -13,6 +14,7 @@ interface PostModalProps {
   onOpenAuth: () => void;
   isSaved?: boolean;
   onToggleSave?: (id: string, e?: React.MouseEvent) => void;
+  articleAdConfig?: AdSlotConfig | null;
 }
 
 export const PostModal: React.FC<PostModalProps> = ({
@@ -23,6 +25,7 @@ export const PostModal: React.FC<PostModalProps> = ({
   onOpenAuth,
   isSaved = false,
   onToggleSave,
+  articleAdConfig,
 }) => {
   const [copied, setCopied] = useState(false);
   const [activeMediaTab, setActiveMediaTab] = useState<'photo' | 'video'>(
@@ -271,6 +274,17 @@ export const PostModal: React.FC<PostModalProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* Dynamic Article / Post Ad Placement (Slot 5) */}
+              {articleAdConfig && (
+                <div className="my-2">
+                  <AdRenderer
+                    slotConfig={articleAdConfig}
+                    slotId="article"
+                    language={language}
+                  />
+                </div>
+              )}
 
               {/* Social Interactions & Live Comments (Auth required) */}
               <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#D8D0BC] shadow-xs">

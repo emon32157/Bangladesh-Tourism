@@ -7,6 +7,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   GoogleAuthProvider,
+  FacebookAuthProvider,
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -75,6 +76,7 @@ export const db = getFirestore(app);
 export const rtdb = getDatabase(app);
 
 export const googleProvider = new GoogleAuthProvider();
+export const facebookProvider = new FacebookAuthProvider();
 
 export {
   signInWithPopup,

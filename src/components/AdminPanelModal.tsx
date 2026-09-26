@@ -18,7 +18,11 @@ import {
   NewsletterSubscriber,
   SubscriberStatus,
   NewsPost,
+  AllAdsConfig,
+  AdSlotConfig,
 } from '../types';
+import { getCachedAdsConfig, subscribeToAdsConfig } from '../lib/adsService';
+import { AdminAdsSection } from './AdminAdsSection';
 import { uploadImageToImgBB } from '../lib/imgbb';
 import {
   fetchRegisteredUsers,
@@ -53,7 +57,19 @@ import {
   updateNewsPost,
   deleteNewsPost,
 } from '../lib/newsService';
-import { bootstrapAndMigrateDataToFirestore } from '../lib/firestoreSync';
+import {
+  bootstrapAndMigrateDataToFirestore,
+  saveDestinationToFirebase,
+  deleteDestinationFromFirebase,
+  saveExperienceToFirebase,
+  deleteExperienceFromFirebase,
+  saveFestivalToFirebase,
+  deleteFestivalFromFirebase,
+  saveStoryToFirebase,
+  deleteStoryFromFirebase,
+  saveCommunityPostToFirebase,
+  deleteCommunityPostFromFirebase,
+} from '../lib/firestoreSync';
 import {
   X,
   Plus,
@@ -104,7 +120,10 @@ import {
   CheckCheck,
   Newspaper,
   Pin,
+  TrendingUp,
+  Megaphone,
 } from 'lucide-react';
+import { AdminAnalyticsDashboard } from './AdminAnalyticsDashboard';
 
 interface AdminPanelModalProps {
   isOpen: boolean;
@@ -127,15 +146,21 @@ interface AdminPanelModalProps {
   onUpdateStories: (items: EditorialStory[]) => void;
   onUpdateCommunityPosts: (items: CommunityPost[]) => void;
   onResetAllData: () => void;
+
+  // Dynamic Ads Management
+  adsConfig?: AllAdsConfig;
+  onUpdateAdsConfig?: (config: AllAdsConfig) => void;
 }
 
 type AdminTab =
+  | 'analytics'
   | 'overview'
   | 'pending'
   | 'reports'
   | 'users'
   | 'subscribers'
   | 'news'
+  | 'ads'
   | 'destinations'
   | 'experiences'
   | 'festivals'
@@ -160,13 +185,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   onUpdateStories,
   onUpdateCommunityPosts,
   onResetAllData,
+  adsConfig,
+  onUpdateAdsConfig,
 }) => {
   // Authentication State: Strictly check if user has Firebase admin role
   const isFirebaseAdmin = checkIsUserAdmin(currentUser);
   const isAuthenticated = isFirebaseAdmin;
 
   // Active Tab & Search
-  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [activeTab, setActiveTab] = useState<AdminTab>('analytics');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Status Filter for Stories and Community posts
@@ -210,6 +237,23 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [addingSubscriberLoading, setAddingSubscriberLoading] = useState(false);
   const [deleteSubscriberConfirm, setDeleteSubscriberConfirm] = useState<NewsletterSubscriber | null>(null);
   const [copiedEmailStatus, setCopiedEmailStatus] = useState(false);
+
+  // Dynamic Ads Management State
+  const [activeAdsConfig, setActiveAdsConfig] = useState<AllAdsConfig>(() => adsConfig || getCachedAdsConfig());
+
+  useEffect(() => {
+    if (adsConfig) {
+      setActiveAdsConfig(adsConfig);
+    }
+  }, [adsConfig]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const unsub = subscribeToAdsConfig((config) => {
+      setActiveAdsConfig(config);
+    });
+    return unsub;
+  }, [isOpen]);
 
   // Fetch users when modal opens or users tab is active
   const loadUsers = async () => {
@@ -758,7 +802,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   };
 
   // --- DESTINATIONS CRUD ---
-  const handleSaveDestination = (e: React.FormEvent) => {
+  const handleSaveDestination = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingDestination || !editingDestination.title || !editingDestination.titleBn) {
       showToast(language === 'en' ? 'Title is required' : 'শিরোনাম প্রদান আবশ্যক', 'error');
@@ -807,26 +851,36 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       videoUrl: editingDestination.videoUrl || undefined,
     };
 
-    if (isNewDestination) {
-      onUpdateDestinations([item, ...destinations]);
-      showToast(language === 'en' ? 'Destination added successfully!' : 'নতুন গন্তব্য যুক্ত হয়েছে!');
-    } else {
-      onUpdateDestinations(destinations.map((d) => (d.id === item.id ? item : d)));
-      showToast(language === 'en' ? 'Destination updated successfully!' : 'গন্তব্য আপডেট সম্পন্ন হয়েছে!');
+    try {
+      await saveDestinationToFirebase(item);
+      if (isNewDestination) {
+        onUpdateDestinations([item, ...destinations]);
+      } else {
+        onUpdateDestinations(destinations.map((d) => (d.id === item.id ? item : d)));
+      }
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setEditingDestination(null);
+      setIsNewDestination(false);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
     }
-
-    setEditingDestination(null);
-    setIsNewDestination(false);
   };
 
-  const handleDeleteDestination = (id: string) => {
-    onUpdateDestinations(destinations.filter((d) => d.id !== id));
-    showToast(language === 'en' ? 'Destination deleted' : 'গন্তব্য মুছে ফেলা হয়েছে');
-    setDeleteConfirm(null);
+  const handleDeleteDestination = async (id: string) => {
+    try {
+      await deleteDestinationFromFirebase(id);
+      onUpdateDestinations(destinations.filter((d) => d.id !== id));
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setDeleteConfirm(null);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
+    }
   };
 
   // --- EXPERIENCES CRUD ---
-  const handleSaveExperience = (e: React.FormEvent) => {
+  const handleSaveExperience = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingExperience || !editingExperience.title) {
       showToast(language === 'en' ? 'Title is required' : 'শিরোনাম আবশ্যক', 'error');
@@ -848,25 +902,36 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       tag: editingExperience.tag || 'Popular Experience',
     };
 
-    if (isNewExperience) {
-      onUpdateExperiences([item, ...experiences]);
-      showToast(language === 'en' ? 'Experience added!' : 'নতুন অভিজ্ঞতা যুক্ত হয়েছে!');
-    } else {
-      onUpdateExperiences(experiences.map((exp) => (exp.id === item.id ? item : exp)));
-      showToast(language === 'en' ? 'Experience updated!' : 'অভিজ্ঞতা আপডেট হয়েছে!');
+    try {
+      await saveExperienceToFirebase(item);
+      if (isNewExperience) {
+        onUpdateExperiences([item, ...experiences]);
+      } else {
+        onUpdateExperiences(experiences.map((exp) => (exp.id === item.id ? item : exp)));
+      }
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setEditingExperience(null);
+      setIsNewExperience(false);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
     }
-    setEditingExperience(null);
-    setIsNewExperience(false);
   };
 
-  const handleDeleteExperience = (id: string) => {
-    onUpdateExperiences(experiences.filter((e) => e.id !== id));
-    showToast(language === 'en' ? 'Experience deleted' : 'অভিজ্ঞতা মুছে ফেলা হয়েছে');
-    setDeleteConfirm(null);
+  const handleDeleteExperience = async (id: string) => {
+    try {
+      await deleteExperienceFromFirebase(id);
+      onUpdateExperiences(experiences.filter((e) => e.id !== id));
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setDeleteConfirm(null);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
+    }
   };
 
   // --- FESTIVALS CRUD ---
-  const handleSaveFestival = (e: React.FormEvent) => {
+  const handleSaveFestival = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingFestival || !editingFestival.title) {
       showToast(language === 'en' ? 'Festival title required' : 'উৎসবের নাম আবশ্যক', 'error');
@@ -889,25 +954,36 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       badge: editingFestival.badge || 'National Celebration',
     };
 
-    if (isNewFestival) {
-      onUpdateFestivals([item, ...festivals]);
-      showToast(language === 'en' ? 'Festival added!' : 'উৎসব যুক্ত হয়েছে!');
-    } else {
-      onUpdateFestivals(festivals.map((f) => (f.id === item.id ? item : f)));
-      showToast(language === 'en' ? 'Festival updated!' : 'উৎসব আপডেট হয়েছে!');
+    try {
+      await saveFestivalToFirebase(item);
+      if (isNewFestival) {
+        onUpdateFestivals([item, ...festivals]);
+      } else {
+        onUpdateFestivals(festivals.map((f) => (f.id === item.id ? item : f)));
+      }
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setEditingFestival(null);
+      setIsNewFestival(false);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
     }
-    setEditingFestival(null);
-    setIsNewFestival(false);
   };
 
-  const handleDeleteFestival = (id: string) => {
-    onUpdateFestivals(festivals.filter((f) => f.id !== id));
-    showToast(language === 'en' ? 'Festival deleted' : 'উৎসব মুছে ফেলা হয়েছে');
-    setDeleteConfirm(null);
+  const handleDeleteFestival = async (id: string) => {
+    try {
+      await deleteFestivalFromFirebase(id);
+      onUpdateFestivals(festivals.filter((f) => f.id !== id));
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setDeleteConfirm(null);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
+    }
   };
 
   // --- STORIES CRUD ---
-  const handleSaveStory = (e: React.FormEvent) => {
+  const handleSaveStory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingStory || !editingStory.title) {
       showToast(language === 'en' ? 'Story title required' : 'গল্পের শিরোনাম আবশ্যক', 'error');
@@ -946,25 +1022,36 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       expiresAt: editingStory.status === 'pending' ? (editingStory.expiresAt || (Date.now() + 30 * 24 * 60 * 60 * 1000)) : undefined,
     };
 
-    if (isNewStory) {
-      onUpdateStories([item, ...stories]);
-      showToast(language === 'en' ? 'Story published!' : 'নতুন গল্প প্রকাশিত হয়েছে!');
-    } else {
-      onUpdateStories(stories.map((s) => (s.id === item.id ? item : s)));
-      showToast(language === 'en' ? 'Story updated!' : 'গল্প আপডেট হয়েছে!');
+    try {
+      await saveStoryToFirebase(item);
+      if (isNewStory) {
+        onUpdateStories([item, ...stories]);
+      } else {
+        onUpdateStories(stories.map((s) => (s.id === item.id ? item : s)));
+      }
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setEditingStory(null);
+      setIsNewStory(false);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
     }
-    setEditingStory(null);
-    setIsNewStory(false);
   };
 
-  const handleDeleteStory = (id: string) => {
-    onUpdateStories(stories.filter((s) => s.id !== id));
-    showToast(language === 'en' ? 'Story deleted' : 'গল্প মুছে ফেলা হয়েছে');
-    setDeleteConfirm(null);
+  const handleDeleteStory = async (id: string) => {
+    try {
+      await deleteStoryFromFirebase(id);
+      onUpdateStories(stories.filter((s) => s.id !== id));
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setDeleteConfirm(null);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
+    }
   };
 
   // --- COMMUNITY POSTS CRUD ---
-  const handleSavePost = (e: React.FormEvent) => {
+  const handleSavePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPost || !editingPost.title) {
       showToast(language === 'en' ? 'Post title is required' : 'পোস্টের শিরোনাম আবশ্যক', 'error');
@@ -996,21 +1083,32 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       expiresAt: editingPost.status === 'pending' ? (editingPost.expiresAt || (Date.now() + 30 * 24 * 60 * 60 * 1000)) : undefined,
     };
 
-    if (isNewPost) {
-      onUpdateCommunityPosts([item, ...communityPosts]);
-      showToast(language === 'en' ? 'Community photo added!' : 'কমিউনিটি ফটো যুক্ত হয়েছে!');
-    } else {
-      onUpdateCommunityPosts(communityPosts.map((p) => (p.id === item.id ? item : p)));
-      showToast(language === 'en' ? 'Photo post updated!' : 'পোস্ট আপডেট হয়েছে!');
+    try {
+      await saveCommunityPostToFirebase(item);
+      if (isNewPost) {
+        onUpdateCommunityPosts([item, ...communityPosts]);
+      } else {
+        onUpdateCommunityPosts(communityPosts.map((p) => (p.id === item.id ? item : p)));
+      }
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setEditingPost(null);
+      setIsNewPost(false);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
     }
-    setEditingPost(null);
-    setIsNewPost(false);
   };
 
-  const handleDeletePost = (id: string) => {
-    onUpdateCommunityPosts(communityPosts.filter((p) => p.id !== id));
-    showToast(language === 'en' ? 'Post deleted' : 'পোস্ট মুছে ফেলা হয়েছে');
-    setDeleteConfirm(null);
+  const handleDeletePost = async (id: string) => {
+    try {
+      await deleteCommunityPostFromFirebase(id);
+      onUpdateCommunityPosts(communityPosts.filter((p) => p.id !== id));
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
+      setDeleteConfirm(null);
+    } catch (err) {
+      console.error(err);
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
+    }
   };
 
   // --- NEWS POSTS CRUD ---
@@ -1039,7 +1137,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           authorRole: editingNews.authorRole || 'Tourism Authority',
           pinned: Boolean(editingNews.pinned),
         });
-        showToast(language === 'en' ? 'News announcement published!' : 'সংবাদ ও নোটিশ প্রকাশিত হয়েছে!');
+        showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
       } else if (editingNews.id) {
         await updateNewsPost(editingNews.id, {
           title: editingNews.title,
@@ -1055,24 +1153,24 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           authorRole: editingNews.authorRole,
           pinned: Boolean(editingNews.pinned),
         });
-        showToast(language === 'en' ? 'News announcement updated!' : 'সংবাদ সফলভাবে আপডেট হয়েছে!');
+        showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
       }
       setEditingNews(null);
       setIsNewNews(false);
     } catch (err) {
       console.error(err);
-      showToast(language === 'en' ? 'Failed to save news' : 'সংবাদ সংরক্ষণ করা যায়নি', 'error');
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
     }
   };
 
   const handleDeleteNews = async (id: string) => {
     try {
       await deleteNewsPost(id);
-      showToast(language === 'en' ? 'News post deleted' : 'সংবাদ মুছে ফেলা হয়েছে');
+      showToast(language === 'en' ? 'Changes saved successfully.' : 'পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।');
       setDeleteConfirm(null);
     } catch (err) {
       console.error(err);
-      showToast(language === 'en' ? 'Failed to delete news' : 'সংবাদ মোছা যায়নি', 'error');
+      showToast(language === 'en' ? 'Failed to save changes. Please try again.' : 'পরিবর্তন সংরক্ষণ ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
     }
   };
 
@@ -1371,6 +1469,22 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
             <div className="w-56 min-w-[220px] bg-white/70 border-r border-[#D8D0BC] p-3 flex flex-col gap-1.5 overflow-y-auto shrink-0">
               <button
                 onClick={() => {
+                  setActiveTab('analytics');
+                  setSearchQuery('');
+                }}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left whitespace-nowrap cursor-pointer ${
+                  activeTab === 'analytics'
+                    ? 'bg-[#0F3B2E] text-white shadow-xs'
+                    : 'text-[#4B554E] hover:bg-[#EFEADC]'
+                }`}
+              >
+                <TrendingUp className="w-4 h-4 text-[#DE9B2E]" />
+                <span className="flex-1">{language === 'en' ? 'Analytics Dashboard' : 'অ্যানালিটিক্স ড্যাশবোর্ড'}</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              </button>
+
+              <button
+                onClick={() => {
                   setActiveTab('overview');
                   setSearchQuery('');
                 }}
@@ -1501,6 +1615,35 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </div>
                 <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${activeTab === 'news' ? 'bg-white/20 text-white' : 'bg-[#EFEADC] text-[#0A2A21]'}`}>
                   {adminNewsList.length}
+                </span>
+              </button>
+
+              {/* Tab Button: Dynamic Ads Management */}
+              <button
+                onClick={() => {
+                  setActiveTab('ads');
+                  setSearchQuery('');
+                }}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left whitespace-nowrap cursor-pointer ${
+                  activeTab === 'ads'
+                    ? 'bg-[#0F3B2E] text-white shadow-xs'
+                    : 'text-[#4B554E] hover:bg-[#EFEADC]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Megaphone className="w-4 h-4 text-[#DE9B2E]" />
+                  <span>{language === 'en' ? 'Ads Management' : 'বিজ্ঞাপন ব্যবস্থাপনা'}</span>
+                </div>
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    activeTab === 'ads'
+                      ? 'bg-white/20 text-white'
+                      : (Object.values(activeAdsConfig) as AdSlotConfig[]).some((s) => s.enabled)
+                      ? 'bg-emerald-100 text-emerald-800 font-extrabold'
+                      : 'bg-[#EFEADC] text-[#0A2A21]'
+                  }`}
+                >
+                  {(Object.values(activeAdsConfig) as AdSlotConfig[]).filter((s) => s.enabled).length} / 6
                 </span>
               </button>
 
@@ -4118,6 +4261,22 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       })}
                   </div>
                 </div>
+              )}
+
+              {/* Tab: Dynamic Ads Management */}
+              {activeTab === 'ads' && (
+                <AdminAdsSection
+                  language={language}
+                  adsConfig={activeAdsConfig}
+                  onUpdateAdsConfig={(updated) => {
+                    setActiveAdsConfig(updated);
+                    if (onUpdateAdsConfig) {
+                      onUpdateAdsConfig(updated);
+                    }
+                  }}
+                  showToast={showToast}
+                  currentUserEmail={currentUser?.email}
+                />
               )}
 
               {/* Tab: Backup & Reset */}

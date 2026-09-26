@@ -5,6 +5,7 @@
 
 import {
   db,
+  auth,
   doc,
   getDoc,
   setDoc,
@@ -14,119 +15,112 @@ import {
   serverTimestamp,
 } from './firebase';
 import { AppUser } from '../types';
+import type { User as FirebaseUser } from 'firebase/auth';
 
 const LOCAL_USERS_KEY = 'discover_bd_cached_users';
 
-// Check if a user is an Admin purely based on their role
+/**
+ * Check if a user is an Admin purely based on their verified role
+ * Never relies on client-side localStorage overrides or email patterns.
+ */
 export const checkIsUserAdmin = (user: AppUser | null): boolean => {
   if (!user) return false;
   return user.role === 'admin';
 };
 
-// Sync and fetch user profile with role from Firebase Firestore
-export const syncFirebaseUserProfile = async (
-  authUser: {
-    uid: string;
-    email: string | null;
-    displayName: string | null;
-    photoURL: string | null;
-    isAnonymous?: boolean;
+/**
+ * Verifies if the currently authenticated Firebase user has the Admin Custom Claim
+ * or verified record in the protected 'admins' Firestore collection.
+ * 
+ * Strict RBAC:
+ * - Checks user.getIdTokenResult(true) for claims.role === "admin"
+ * - Checks admins/{uid} document in Firestore
+ * - NEVER uses email.includes("admin") or email matching
+ */
+export const verifyFirebaseAdminStatus = async (
+  firebaseUser: FirebaseUser | null
+): Promise<boolean> => {
+  if (!firebaseUser) return false;
+
+  // 1. Check verified Firebase Custom Claim in ID token
+  try {
+    const tokenResult = await firebaseUser.getIdTokenResult(true);
+    if (tokenResult.claims && tokenResult.claims.role === 'admin') {
+      return true;
+    }
+  } catch (err) {
+    console.warn('Could not read ID token claims:', err);
   }
+
+  // 2. Check verified 'admins' Firestore document
+  try {
+    const adminDocRef = doc(db, 'admins', firebaseUser.uid);
+    const adminSnap = await getDoc(adminDocRef);
+    if (
+      adminSnap.exists() &&
+      adminSnap.data()?.role === 'admin' &&
+      adminSnap.data()?.revoked !== true
+    ) {
+      return true;
+    }
+  } catch (err) {
+    // If permission denied or not exists, user is not an admin
+  }
+
+  return false;
+};
+
+/**
+ * Sync and fetch user profile with verified role from Firebase
+ * - Role is determined SOLELY by Firebase Custom Claims or verified 'admins' collection
+ * - NO email pattern matching or email substring checks
+ */
+export const syncFirebaseUserProfile = async (
+  authUser: FirebaseUser
 ): Promise<AppUser> => {
-  const normalizedEmail = authUser.email ? authUser.email.toLowerCase() : null;
-  const isDesignatedAdminEmail = !!(
-    normalizedEmail && (
-      normalizedEmail === 'banngladeshnews24@gmail.com' ||
-      normalizedEmail.includes('admin') ||
-      normalizedEmail === 'admin@bangladeshtourism.gov.bd'
-    )
-  );
-  let assignedRole: 'admin' | 'user' = isDesignatedAdminEmail ? 'admin' : 'user';
+  const isVerifiedAdmin = await verifyFirebaseAdminStatus(authUser);
+  const assignedRole: 'admin' | 'user' = isVerifiedAdmin ? 'admin' : 'user';
+
+  const userDocRef = doc(db, 'users', authUser.uid);
 
   try {
-    const userDocRef = doc(db, 'users', authUser.uid);
-    const adminDocRef = doc(db, 'admins', authUser.uid);
-    
-    const [userSnap, adminSnap] = await Promise.all([
-      getDoc(userDocRef).catch(() => null),
-      getDoc(adminDocRef).catch(() => null),
-    ]);
+    const userSnap = await getDoc(userDocRef);
 
-    if (userSnap && userSnap.exists()) {
+    if (userSnap.exists()) {
       const data = userSnap.data();
-      // If Firestore user doc or admin registry explicitly specifies admin role
-      if (isDesignatedAdminEmail || data.role === 'admin' || (adminSnap && adminSnap.exists() && adminSnap.data()?.revoked !== true)) {
-        assignedRole = 'admin';
-      } else {
-        assignedRole = 'user';
-      }
 
-      // Ensure admins document is created if assignedRole is admin
-      if (assignedRole === 'admin') {
-        await setDoc(adminDocRef, {
-          uid: authUser.uid,
-          email: normalizedEmail,
-          assignedAt: Date.now(),
-        }).catch(() => {});
-      }
-
-      // Update last login
+      // Update last login and profile
       await updateDoc(userDocRef, {
         lastLoginAt: Date.now(),
         displayName: authUser.displayName || data.displayName || 'Traveler',
         photoURL: authUser.photoURL || data.photoURL || null,
         role: assignedRole,
-      }).catch(() => {
-        // Ignore update errors in restricted offline mode
+      }).catch((e) => {
+        console.warn('Could not update user doc:', e);
       });
     } else {
-      // Check admin registry if user existed in admins collection
-      if (isDesignatedAdminEmail || (adminSnap && adminSnap.exists() && adminSnap.data()?.revoked !== true)) {
-        assignedRole = 'admin';
-      }
-
-      if (assignedRole === 'admin') {
-        await setDoc(adminDocRef, {
-          uid: authUser.uid,
-          email: normalizedEmail,
-          assignedAt: Date.now(),
-        }).catch(() => {});
-      }
-
-      // Create new user profile in Firestore
+      // First-time profile creation in Firestore
       await setDoc(userDocRef, {
         uid: authUser.uid,
-        email: normalizedEmail,
+        email: authUser.email || null,
         displayName: authUser.displayName || (assignedRole === 'admin' ? 'Administrator' : 'Traveler'),
         photoURL: authUser.photoURL || null,
         role: assignedRole,
         isAnonymous: !!authUser.isAnonymous,
+        saved: ['coxs-bazar', 'sylhet-tea'],
         createdAt: Date.now(),
         lastLoginAt: Date.now(),
-      }).catch((err) => {
-        console.warn('Firestore user profile write notice (using client state):', err);
+      }).catch((e) => {
+        console.warn('Could not create initial user profile doc:', e);
       });
     }
   } catch (err) {
-    console.warn('Firebase user role lookup failed (falling back to local cache):', err);
-    // Check local storage users cache
-    try {
-      const cached = localStorage.getItem(LOCAL_USERS_KEY);
-      if (cached) {
-        const users: AppUser[] = JSON.parse(cached);
-        const existing = users.find((u) => u.uid === authUser.uid);
-        if (existing?.role === 'admin') {
-          assignedRole = 'admin';
-        }
-      }
-    } catch {
-      // fallback
-    }
+    console.warn('Firestore user profile sync noticed error:', err);
   }
 
   const resolvedUser: AppUser = {
     uid: authUser.uid,
-    email: normalizedEmail,
+    email: authUser.email || null,
     displayName: authUser.displayName || (assignedRole === 'admin' ? 'Administrator' : 'Traveler'),
     photoURL: authUser.photoURL || null,
     isAnonymous: authUser.isAnonymous,
@@ -135,13 +129,15 @@ export const syncFirebaseUserProfile = async (
     lastLoginAt: Date.now(),
   };
 
-  // Cache user profile locally
+  // Cache user profile locally as an optional cache only
   cacheUserLocally(resolvedUser);
 
   return resolvedUser;
 };
 
-// Cache user locally for offline & instant role resolution
+/**
+ * Cache user locally for read cache only
+ */
 export const cacheUserLocally = (user: AppUser) => {
   try {
     const raw = localStorage.getItem(LOCAL_USERS_KEY);
@@ -158,22 +154,13 @@ export const cacheUserLocally = (user: AppUser) => {
   }
 };
 
-// Fetch all registered users from Firestore & local store
+/**
+ * Fetch all registered users from Firestore (Admin only)
+ */
 export const fetchRegisteredUsers = async (): Promise<AppUser[]> => {
   const usersMap = new Map<string, AppUser>();
 
-  // 1. Load local cached users first
-  try {
-    const raw = localStorage.getItem(LOCAL_USERS_KEY);
-    if (raw) {
-      const parsed: AppUser[] = JSON.parse(raw);
-      parsed.forEach((u) => usersMap.set(u.uid, u));
-    }
-  } catch (e) {
-    console.error(e);
-  }
-
-  // 2. Fetch from Firebase Firestore
+  // Fetch from Firebase Firestore as primary source of truth
   try {
     const usersCol = collection(db, 'users');
     const snapshot = await getDocs(usersCol);
@@ -187,29 +174,65 @@ export const fetchRegisteredUsers = async (): Promise<AppUser[]> => {
           role: data.role === 'admin' ? 'admin' : 'user',
         });
       });
+      const result = Array.from(usersMap.values());
+      // Optional read cache
+      try {
+        localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(result));
+      } catch {}
+      return result;
     }
   } catch (err) {
-    console.warn('Could not fetch users from Firestore (showing cached users):', err);
+    console.warn('Could not fetch users from Firestore (using cached users):', err);
   }
 
-  const result = Array.from(usersMap.values());
-  // Save merged list
+  // Fallback to local cache if offline
   try {
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(result));
-  } catch (e) {
-    console.error(e);
-  }
+    const raw = localStorage.getItem(LOCAL_USERS_KEY);
+    if (raw) {
+      const parsed: AppUser[] = JSON.parse(raw);
+      return parsed;
+    }
+  } catch {}
 
-  return result;
+  return [];
 };
 
-// Update user role in Firestore and local state
+/**
+ * Update user role in Firebase (Admin only)
+ * Firebase is the Primary Source of Truth.
+ * If Firebase write fails, error is thrown and local state is NOT updated!
+ */
 export const updateUserRoleInFirebase = async (
   uid: string,
   newRole: 'admin' | 'user',
   userEmail?: string | null
 ): Promise<void> => {
-  // Update local storage
+  // 1. Primary write to Firestore users collection
+  const userDocRef = doc(db, 'users', uid);
+  await updateDoc(userDocRef, {
+    role: newRole,
+    updatedAt: Date.now(),
+  });
+
+  // 2. Primary write to Firestore admins collection
+  const adminDocRef = doc(db, 'admins', uid);
+  if (newRole === 'admin') {
+    await setDoc(adminDocRef, {
+      uid,
+      email: userEmail || null,
+      role: 'admin',
+      assignedAt: Date.now(),
+    });
+  } else {
+    await setDoc(adminDocRef, {
+      uid,
+      role: 'user',
+      revoked: true,
+      revokedAt: Date.now(),
+    });
+  }
+
+  // 3. Optional local storage update ONLY after successful Firebase operation
   try {
     const raw = localStorage.getItem(LOCAL_USERS_KEY);
     if (raw) {
@@ -220,74 +243,44 @@ export const updateUserRoleInFirebase = async (
         localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
       }
     }
-  } catch (e) {
-    console.error(e);
-  }
-
-  // Update in Firestore
-  try {
-    const userDocRef = doc(db, 'users', uid);
-    await updateDoc(userDocRef, {
-      role: newRole,
-      updatedAt: serverTimestamp ? Date.now() : Date.now(),
-    });
-
-    // Also update admins collection helper
-    if (newRole === 'admin') {
-      const adminDocRef = doc(db, 'admins', uid);
-      await setDoc(adminDocRef, {
-        uid,
-        email: userEmail || null,
-        assignedAt: Date.now(),
-      });
-    } else {
-      const adminDocRef = doc(db, 'admins', uid);
-      await setDoc(adminDocRef, { revoked: true, role: 'user' }).catch(() => {});
-    }
-  } catch (err) {
-    console.warn('Firestore role update notice (cached locally):', err);
-  }
+  } catch {}
 };
 
-// Add admin directly by email
+/**
+ * Assign admin role to a registered user by email (Admin only)
+ */
 export const assignAdminByEmail = async (email: string): Promise<AppUser> => {
   const normalized = email.trim().toLowerCase();
 
-  // Check if we have a user with this email
   const allUsers = await fetchRegisteredUsers();
   const existingUser = allUsers.find((u) => u.email?.toLowerCase() === normalized);
 
-  if (existingUser) {
-    await updateUserRoleInFirebase(existingUser.uid, 'admin', normalized);
-    return { ...existingUser, role: 'admin' };
-  } else {
-    // Create placeholder admin user
-    const newAdminUser: AppUser = {
-      uid: 'admin-' + normalized.replace(/[^a-z0-9]/g, '-'),
-      email: normalized,
-      displayName: normalized.split('@')[0],
-      photoURL: null,
-      role: 'admin',
-      createdAt: Date.now(),
-      lastLoginAt: Date.now(),
-    };
-    cacheUserLocally(newAdminUser);
-    try {
-      const userDocRef = doc(db, 'users', newAdminUser.uid);
-      await setDoc(userDocRef, newAdminUser);
-    } catch (e) {
-      console.warn('Firestore add admin write notice:', e);
-    }
-    return newAdminUser;
+  if (!existingUser) {
+    throw new Error(
+      `No registered user found with email "${email}". The user must first create an account or sign in with this email.`
+    );
   }
+
+  // Update role in Firebase (will throw if permission denied or failed)
+  await updateUserRoleInFirebase(existingUser.uid, 'admin', normalized);
+  return { ...existingUser, role: 'admin' };
 };
 
-// Update user profile photo in local cache and Firestore
+/**
+ * Update user profile photo in Firestore and local cache
+ */
 export const updateUserProfilePhoto = async (
   uid: string,
   newPhotoURL: string
 ): Promise<void> => {
-  // Update local cache
+  // 1. Primary write to Firestore
+  const userDocRef = doc(db, 'users', uid);
+  await updateDoc(userDocRef, {
+    photoURL: newPhotoURL,
+    lastLoginAt: Date.now(),
+  });
+
+  // 2. Update local cache ONLY after Firebase write succeeds
   try {
     const raw = localStorage.getItem(LOCAL_USERS_KEY);
     if (raw) {
@@ -298,18 +291,5 @@ export const updateUserProfilePhoto = async (
         localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
       }
     }
-  } catch (e) {
-    console.error('Failed to update user photo in local cache:', e);
-  }
-
-  // Update in Firestore
-  try {
-    const userDocRef = doc(db, 'users', uid);
-    await updateDoc(userDocRef, {
-      photoURL: newPhotoURL,
-      lastLoginAt: Date.now(),
-    });
-  } catch (err) {
-    console.warn('Firestore user photo update notice (cached locally):', err);
-  }
+  } catch {}
 };

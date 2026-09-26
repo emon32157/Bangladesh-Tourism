@@ -30,6 +30,7 @@ import {
   EDITORIAL_STORIES,
   SEED_COMMUNITY_POSTS,
 } from '../data/bangladeshData';
+import { INITIAL_NEWS_SEED } from './newsService';
 
 export enum OperationType {
   CREATE = 'create',
@@ -52,7 +53,7 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -64,7 +65,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.warn('Firestore Error Notice: ', JSON.stringify(errInfo));
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(error instanceof Error ? error.message : String(error));
 }
 
 /**
@@ -84,15 +86,34 @@ export function cleanDoc<T extends Record<string, any>>(obj: T): Record<string, 
   return cleaned;
 }
 
-/**
- * Ensures a valid authenticated user session exists before Firestore writes.
- * Note: Anonymous sign-in must only ever happen through the user's own deliberate action, never automatically.
- * This is intentionally a no-op that returns immediately without signing anyone in.
- * Calling code's try/catch handles unauthenticated writes gracefully (and security rules reject them).
- */
-export async function ensureAuthSession(): Promise<void> {
-  // Deliberate no-op: Anonymous sign-in must only ever happen through the user's own deliberate action, never automatically.
-  return;
+// -------------------------------------------------------------
+// Direct Firestore Mutations for Destinations
+// Firebase is the Primary Source of Truth!
+// Writes only update local cache AFTER successful Firebase response.
+// -------------------------------------------------------------
+
+export async function saveDestinationToFirebase(dest: Destination): Promise<void> {
+  const path = `destinations/${dest.id}`;
+  try {
+    const destRef = doc(db, 'destinations', dest.id);
+    await setDoc(destRef, cleanDoc(dest), { merge: true });
+    // Update local cache ONLY upon successful Firebase write
+    updateLocalDestinationCache(dest);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteDestinationFromFirebase(id: string): Promise<void> {
+  const path = `destinations/${id}`;
+  try {
+    const destRef = doc(db, 'destinations', id);
+    await deleteDoc(destRef);
+    // Remove from local cache ONLY upon successful Firebase write
+    removeLocalDestinationCache(id);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
 }
 
 // -------------------------------------------------------------
@@ -102,58 +123,22 @@ export async function ensureAuthSession(): Promise<void> {
 export async function saveCommunityPostToFirebase(post: CommunityPost): Promise<void> {
   const path = `community_posts/${post.id}`;
   try {
-    await ensureAuthSession();
     const postRef = doc(db, 'community_posts', post.id);
     await setDoc(postRef, cleanDoc(post), { merge: true });
-    // Update local cache
     updateLocalCommunityPostCache(post);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
-    // Still update local storage
-    updateLocalCommunityPostCache(post);
   }
 }
 
 export async function deleteCommunityPostFromFirebase(id: string): Promise<void> {
   const path = `community_posts/${id}`;
   try {
-    await ensureAuthSession();
     const postRef = doc(db, 'community_posts', id);
     await deleteDoc(postRef);
     removeLocalCommunityPostCache(id);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
-    removeLocalCommunityPostCache(id);
-  }
-}
-
-// -------------------------------------------------------------
-// Direct Firestore Mutations for Destinations
-// -------------------------------------------------------------
-
-export async function saveDestinationToFirebase(dest: Destination): Promise<void> {
-  const path = `destinations/${dest.id}`;
-  try {
-    await ensureAuthSession();
-    const destRef = doc(db, 'destinations', dest.id);
-    await setDoc(destRef, cleanDoc(dest), { merge: true });
-    updateLocalDestinationCache(dest);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-    updateLocalDestinationCache(dest);
-  }
-}
-
-export async function deleteDestinationFromFirebase(id: string): Promise<void> {
-  const path = `destinations/${id}`;
-  try {
-    await ensureAuthSession();
-    const destRef = doc(db, 'destinations', id);
-    await deleteDoc(destRef);
-    removeLocalDestinationCache(id);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-    removeLocalDestinationCache(id);
   }
 }
 
@@ -164,9 +149,9 @@ export async function deleteDestinationFromFirebase(id: string): Promise<void> {
 export async function saveExperienceToFirebase(exp: Experience): Promise<void> {
   const path = `experiences/${exp.id}`;
   try {
-    await ensureAuthSession();
     const expRef = doc(db, 'experiences', exp.id);
     await setDoc(expRef, cleanDoc(exp), { merge: true });
+    updateLocalExperienceCache(exp);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -175,9 +160,9 @@ export async function saveExperienceToFirebase(exp: Experience): Promise<void> {
 export async function deleteExperienceFromFirebase(id: string): Promise<void> {
   const path = `experiences/${id}`;
   try {
-    await ensureAuthSession();
     const expRef = doc(db, 'experiences', id);
     await deleteDoc(expRef);
+    removeLocalExperienceCache(id);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -190,9 +175,9 @@ export async function deleteExperienceFromFirebase(id: string): Promise<void> {
 export async function saveFestivalToFirebase(fest: Festival): Promise<void> {
   const path = `festivals/${fest.id}`;
   try {
-    await ensureAuthSession();
     const festRef = doc(db, 'festivals', fest.id);
     await setDoc(festRef, cleanDoc(fest), { merge: true });
+    updateLocalFestivalCache(fest);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -201,9 +186,9 @@ export async function saveFestivalToFirebase(fest: Festival): Promise<void> {
 export async function deleteFestivalFromFirebase(id: string): Promise<void> {
   const path = `festivals/${id}`;
   try {
-    await ensureAuthSession();
     const festRef = doc(db, 'festivals', id);
     await deleteDoc(festRef);
+    removeLocalFestivalCache(id);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -216,9 +201,9 @@ export async function deleteFestivalFromFirebase(id: string): Promise<void> {
 export async function saveStoryToFirebase(story: EditorialStory): Promise<void> {
   const path = `editorial_stories/${story.id}`;
   try {
-    await ensureAuthSession();
     const storyRef = doc(db, 'editorial_stories', story.id);
     await setDoc(storyRef, cleanDoc(story), { merge: true });
+    updateLocalStoryCache(story);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -227,16 +212,16 @@ export async function saveStoryToFirebase(story: EditorialStory): Promise<void> 
 export async function deleteStoryFromFirebase(id: string): Promise<void> {
   const path = `editorial_stories/${id}`;
   try {
-    await ensureAuthSession();
     const storyRef = doc(db, 'editorial_stories', id);
     await deleteDoc(storyRef);
+    removeLocalStoryCache(id);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 
 // -------------------------------------------------------------
-// Safe Storage Helpers
+// Safe Local Storage Cache Helpers (Optional Read Cache Only)
 // -------------------------------------------------------------
 
 function safeGetStorage(key: string): string | null {
@@ -313,8 +298,72 @@ function removeLocalDestinationCache(id: string) {
   }
 }
 
+function updateLocalExperienceCache(exp: Experience) {
+  try {
+    const stored = safeGetStorage('discover_bd_experiences');
+    const list: Experience[] = stored ? JSON.parse(stored) : [];
+    const index = list.findIndex((e) => e.id === exp.id);
+    if (index >= 0) list[index] = exp;
+    else list.unshift(exp);
+    safeSetStorage('discover_bd_experiences', JSON.stringify(list));
+  } catch {}
+}
+
+function removeLocalExperienceCache(id: string) {
+  try {
+    const stored = safeGetStorage('discover_bd_experiences');
+    if (stored) {
+      const list: Experience[] = JSON.parse(stored);
+      safeSetStorage('discover_bd_experiences', JSON.stringify(list.filter((e) => e.id !== id)));
+    }
+  } catch {}
+}
+
+function updateLocalFestivalCache(fest: Festival) {
+  try {
+    const stored = safeGetStorage('discover_bd_festivals');
+    const list: Festival[] = stored ? JSON.parse(stored) : [];
+    const index = list.findIndex((f) => f.id === fest.id);
+    if (index >= 0) list[index] = fest;
+    else list.unshift(fest);
+    safeSetStorage('discover_bd_festivals', JSON.stringify(list));
+  } catch {}
+}
+
+function removeLocalFestivalCache(id: string) {
+  try {
+    const stored = safeGetStorage('discover_bd_festivals');
+    if (stored) {
+      const list: Festival[] = JSON.parse(stored);
+      safeSetStorage('discover_bd_festivals', JSON.stringify(list.filter((f) => f.id !== id)));
+    }
+  } catch {}
+}
+
+function updateLocalStoryCache(story: EditorialStory) {
+  try {
+    const stored = safeGetStorage('discover_bd_stories');
+    const list: EditorialStory[] = stored ? JSON.parse(stored) : [];
+    const index = list.findIndex((s) => s.id === story.id);
+    if (index >= 0) list[index] = story;
+    else list.unshift(story);
+    safeSetStorage('discover_bd_stories', JSON.stringify(list));
+  } catch {}
+}
+
+function removeLocalStoryCache(id: string) {
+  try {
+    const stored = safeGetStorage('discover_bd_stories');
+    if (stored) {
+      const list: EditorialStory[] = JSON.parse(stored);
+      safeSetStorage('discover_bd_stories', JSON.stringify(list.filter((s) => s.id !== id)));
+    }
+  } catch {}
+}
+
 // -------------------------------------------------------------
 // Real-time Subscriptions to Firestore Collections
+// Firebase is the Primary Source of Truth!
 // -------------------------------------------------------------
 
 export interface FirestoreSubscriptionCallbacks {
@@ -326,7 +375,7 @@ export interface FirestoreSubscriptionCallbacks {
 }
 
 // -------------------------------------------------------------
-// Document Normalizers (Protects against missing fields in Firestore)
+// Document Normalizers
 // -------------------------------------------------------------
 
 function normalizeDestination(raw: any, id: string): Destination {
@@ -498,7 +547,7 @@ export function subscribeToAllFirestoreData(callbacks: FirestoreSubscriptionCall
             remoteItems.push(normalizeDestination(docSnap.data(), docSnap.id));
           });
 
-          // Merge with full DESTINATIONS catalog so catalog stays rich
+          // Remote Firestore data takes priority
           const remoteMapById = new Map<string, Destination>();
           remoteItems.forEach((item) => {
             if (item && item.id) {
@@ -506,24 +555,22 @@ export function subscribeToAllFirestoreData(callbacks: FirestoreSubscriptionCall
             }
           });
 
-          // Build a safe deduplicated list ensuring absolutely unique IDs
           const seenIds = new Set<string>();
           const dedupedMerged: Destination[] = [];
 
-          // 1. Populate base catalog with any remote modifications
-          DESTINATIONS.forEach((base) => {
-            const updated = remoteMapById.get(base.id) || base;
-            if (!seenIds.has(updated.id)) {
-              seenIds.add(updated.id);
-              dedupedMerged.push(updated);
-            }
-          });
-
-          // 2. Prepend any new user-created remote destinations
+          // Prepend remote created items first
           remoteItems.forEach((item) => {
             if (item && item.id && !seenIds.has(item.id)) {
               seenIds.add(item.id);
-              dedupedMerged.unshift(item);
+              dedupedMerged.push(item);
+            }
+          });
+
+          // Fill with remaining base catalog items
+          DESTINATIONS.forEach((base) => {
+            if (!seenIds.has(base.id)) {
+              seenIds.add(base.id);
+              dedupedMerged.push(base);
             }
           });
 
@@ -531,7 +578,9 @@ export function subscribeToAllFirestoreData(callbacks: FirestoreSubscriptionCall
           safeSetStorage('discover_bd_destinations', JSON.stringify(dedupedMerged));
         }
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'destinations')
+      (err) => {
+        console.warn('Destinations listener notice:', err);
+      }
     );
     unsubscribes.push(unsub);
   } catch (e) {
@@ -559,7 +608,9 @@ export function subscribeToAllFirestoreData(callbacks: FirestoreSubscriptionCall
           safeSetStorage('discover_bd_experiences', JSON.stringify(merged));
         }
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'experiences')
+      (err) => {
+        console.warn('Experiences listener notice:', err);
+      }
     );
     unsubscribes.push(unsub);
   } catch (e) {
@@ -587,7 +638,9 @@ export function subscribeToAllFirestoreData(callbacks: FirestoreSubscriptionCall
           safeSetStorage('discover_bd_festivals', JSON.stringify(merged));
         }
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'festivals')
+      (err) => {
+        console.warn('Festivals listener notice:', err);
+      }
     );
     unsubscribes.push(unsub);
   } catch (e) {
@@ -615,7 +668,9 @@ export function subscribeToAllFirestoreData(callbacks: FirestoreSubscriptionCall
           safeSetStorage('discover_bd_stories', JSON.stringify(merged));
         }
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'editorial_stories')
+      (err) => {
+        console.warn('Stories listener notice:', err);
+      }
     );
     unsubscribes.push(unsub);
   } catch (e) {
@@ -639,7 +694,9 @@ export function subscribeToAllFirestoreData(callbacks: FirestoreSubscriptionCall
           safeSetStorage('discover_bd_community_posts', JSON.stringify(items));
         }
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'community_posts')
+      (err) => {
+        console.warn('Community posts listener notice:', err);
+      }
     );
     unsubscribes.push(unsub);
   } catch (e) {
@@ -651,12 +708,9 @@ export function subscribeToAllFirestoreData(callbacks: FirestoreSubscriptionCall
   };
 }
 
-// -------------------------------------------------------------
-// Data Migration & Cloud Synchronization
-// Uploads any updated posts and data from this browser into Firebase
-// so ALL other browsers and users can see the updates!
-// -------------------------------------------------------------
-
+/**
+ * Bootstrap and sync initial/local data to Firestore
+ */
 export async function bootstrapAndMigrateDataToFirestore(): Promise<{
   syncedPosts: number;
   syncedDestinations: number;
@@ -667,104 +721,42 @@ export async function bootstrapAndMigrateDataToFirestore(): Promise<{
   let syncedStories = 0;
 
   try {
-    // Ensure authentication session exists so security rules permit writes
-    await ensureAuthSession();
-
-    // 1. Sync Community Posts
-    const postsSnap = await getDocs(collection(db, 'community_posts')).catch(() => null);
-    const existingPostIds = new Set<string>();
-    if (postsSnap && !postsSnap.empty) {
-      postsSnap.forEach((d) => existingPostIds.add(d.id));
-    }
-
-    // Check local storage for updated posts or fallback to seeds
-    let localPosts: CommunityPost[] = [];
-    try {
-      const stored = safeGetStorage('discover_bd_community_posts');
-      if (stored) localPosts = JSON.parse(stored);
-    } catch {}
-
-    const sourcePosts = localPosts.length > 0 ? localPosts : SEED_COMMUNITY_POSTS;
-
-    // Upload every post that is either missing from Firestore or has updated local modifications
-    for (const post of sourcePosts) {
-      if (!existingPostIds.has(post.id) || localPosts.length > 0) {
-        await setDoc(doc(db, 'community_posts', post.id), cleanDoc(post), { merge: true }).catch(() => {});
-        syncedPosts++;
-      }
-    }
-
-    // 2. Sync Destinations
-    const destSnap = await getDocs(collection(db, 'destinations')).catch(() => null);
-    const existingDestIds = new Set<string>();
-    if (destSnap && !destSnap.empty) {
-      destSnap.forEach((d) => existingDestIds.add(d.id));
-    }
-
-    let localDestinations: Destination[] = [];
-    try {
-      const stored = safeGetStorage('discover_bd_destinations');
-      if (stored) localDestinations = JSON.parse(stored);
-    } catch {}
-
-    const sourceDestinations = localDestinations.length > 0 ? localDestinations : DESTINATIONS;
-    for (const dest of sourceDestinations) {
-      if (!existingDestIds.has(dest.id) || localDestinations.length > 0) {
-        await setDoc(doc(db, 'destinations', dest.id), cleanDoc(dest), { merge: true }).catch(() => {});
+    for (const d of DESTINATIONS) {
+      try {
+        await saveDestinationToFirebase(d);
         syncedDestinations++;
+      } catch (err) {
+        console.warn('Failed syncing seed destination:', d.id, err);
       }
     }
+  } catch (e) {
+    console.warn('Bootstrap destinations notice:', e);
+  }
 
-    // 3. Sync Experiences
-    const expSnap = await getDocs(collection(db, 'experiences')).catch(() => null);
-    if (!expSnap || expSnap.empty) {
-      let localExp: Experience[] = [];
+  try {
+    for (const s of EDITORIAL_STORIES) {
       try {
-        const stored = safeGetStorage('discover_bd_experiences');
-        if (stored) localExp = JSON.parse(stored);
-      } catch {}
-      const sourceExp = localExp.length > 0 ? localExp : EXPERIENCES;
-      for (const exp of sourceExp) {
-        await setDoc(doc(db, 'experiences', exp.id), cleanDoc(exp), { merge: true }).catch(() => {});
-      }
-    }
-
-    // 4. Sync Festivals
-    const festSnap = await getDocs(collection(db, 'festivals')).catch(() => null);
-    if (!festSnap || festSnap.empty) {
-      let localFest: Festival[] = [];
-      try {
-        const stored = safeGetStorage('discover_bd_festivals');
-        if (stored) localFest = JSON.parse(stored);
-      } catch {}
-      const sourceFest = localFest.length > 0 ? localFest : FESTIVALS;
-      for (const fest of sourceFest) {
-        await setDoc(doc(db, 'festivals', fest.id), cleanDoc(fest), { merge: true }).catch(() => {});
-      }
-    }
-
-    // 5. Sync Editorial Stories
-    const storiesSnap = await getDocs(collection(db, 'editorial_stories')).catch(() => null);
-    const existingStoryIds = new Set<string>();
-    if (storiesSnap && !storiesSnap.empty) {
-      storiesSnap.forEach((d) => existingStoryIds.add(d.id));
-    }
-
-    let localStories: EditorialStory[] = [];
-    try {
-      const stored = safeGetStorage('discover_bd_stories');
-      if (stored) localStories = JSON.parse(stored);
-    } catch {}
-
-    const sourceStories = localStories.length > 0 ? localStories : EDITORIAL_STORIES;
-    for (const story of sourceStories) {
-      if (!existingStoryIds.has(story.id) || localStories.length > 0) {
-        await setDoc(doc(db, 'editorial_stories', story.id), cleanDoc(story), { merge: true }).catch(() => {});
+        await saveStoryToFirebase(s);
         syncedStories++;
+      } catch (err) {
+        console.warn('Failed syncing seed story:', s.id, err);
       }
     }
-  } catch (err) {
-    console.warn('Bootstrap and migration to Firestore completed with notice:', err);
+  } catch (e) {
+    console.warn('Bootstrap stories notice:', e);
+  }
+
+  try {
+    for (const n of INITIAL_NEWS_SEED) {
+      try {
+        const docRef = doc(db, 'news_posts', n.id);
+        await setDoc(docRef, cleanDoc(n), { merge: true });
+      } catch (err) {
+        console.warn('Failed syncing seed news post:', n.id, err);
+      }
+    }
+  } catch (e) {
+    console.warn('Bootstrap news notice:', e);
   }
 
   return { syncedPosts, syncedDestinations, syncedStories };

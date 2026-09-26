@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Destination, Language } from '../types';
+import { Destination, Language, AdSlotConfig } from '../types';
 import {
   X,
   Bookmark,
@@ -27,6 +27,7 @@ import {
 import { copyDirectLink } from '../lib/urlSync';
 import { getDestinationSlug } from '../lib/slugs';
 import { VideoPlayer } from './VideoPlayer';
+import { AdRenderer } from './AdRenderer';
 
 interface DestinationModalProps {
   destination: Destination | null;
@@ -37,6 +38,7 @@ interface DestinationModalProps {
   onPlanTrip: (destination: Destination) => void;
   allDestinations?: Destination[];
   onSelectDestination?: (destination: Destination) => void;
+  articleAdConfig?: AdSlotConfig | null;
 }
 
 export const DestinationModal: React.FC<DestinationModalProps> = ({
@@ -48,6 +50,7 @@ export const DestinationModal: React.FC<DestinationModalProps> = ({
   onPlanTrip,
   allDestinations,
   onSelectDestination,
+  articleAdConfig,
 }) => {
   const [copied, setCopied] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -441,6 +444,17 @@ export const DestinationModal: React.FC<DestinationModalProps> = ({
               {language === 'en' ? destination.description : destination.descriptionBn}
             </p>
           </div>
+
+          {/* Dynamic Article / Post Ad Placement (Slot 5) */}
+          {articleAdConfig && (
+            <div className="my-4">
+              <AdRenderer
+                slotConfig={articleAdConfig}
+                slotId="article"
+                language={language}
+              />
+            </div>
+          )}
 
           {/* YouTube Video Tour / Documentary Player */}
           {destination.videoUrl && (

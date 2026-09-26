@@ -11,80 +11,199 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // RBAC: Check if user is registered as admin
+    // Role-based Access Control (RBAC):
+    // Strictly requires verified Firebase Custom Claim OR verified admins collection record
+    // NEVER checks email substrings or names (no email.includes('admin'))
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == 'banngladeshnews24@gmail.com' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        request.auth.token.role == 'admin' ||
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin' &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.revoked != true)
       );
     }
 
-    // Users collection: users and guests can read and write user profile data
+    // 1. Users collection:
+    // - Public CANNOT read all user profiles
+    // - User can read their own profile; Admins can read all profiles
+    // - User can create their own doc with role == 'user' (cannot self-assign 'admin')
+    // - User can update their own profile, but CANNOT modify 'role'
+    // - Admin can update any user profile (including role)
     match /users/{userId} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if (isOwner(userId) && request.resource.data.role == 'user') || isAdmin();
+      allow update: if (
+        isOwner(userId) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.uid == resource.data.uid
+      ) || isAdmin();
+      allow delete: if isAdmin() || isOwner(userId);
     }
 
-    // Admins registry collection
+    // 2. Admins registry collection:
+    // - Only verified admins can read or write
     match /admins/{adminId} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
-    // Destinations: Public read, write allowed for sync and management
+    // 3. Destinations:
+    // - Public read (anyone can view destinations catalog)
+    // - Admin ONLY create, update, delete
     match /destinations/{destinationId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
-    // Experiences: Public read, write allowed for sync and management
+    // 4. Experiences:
+    // - Public read
+    // - Admin ONLY create, update, delete
     match /experiences/{expId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
-    // Festivals: Public read, write allowed for sync and management
+    // 5. Festivals:
+    // - Public read
+    // - Admin ONLY create, update, delete
     match /festivals/{festivalId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
-    // Editorial Stories: Public read, write allowed
+    // 6. Editorial Stories:
+    // - Public read
+    // - Admin can create/update/delete any story
+    // - Authenticated user can submit a pending story (with userId == request.auth.uid)
+    // - Authenticated user can update like/reaction counts
+    // - Author can delete/edit their pending story
     match /editorial_stories/{storyId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending'
+      );
+      allow update: if isAdmin() || (
+        isSignedIn() && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'likedBy', 'reactions', 'userReactions', 'commentsCount']) ||
+          (resource.data.userId == request.auth.uid && resource.data.status == 'pending' && request.resource.data.status == 'pending')
+        )
+      );
+      allow delete: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.userId == request.auth.uid &&
+        resource.data.status == 'pending'
+      );
     }
 
-    // Stories alias fallback
+    // Fallback alias for stories
     match /stories/{storyId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
-    // Community Posts: Public read, write allowed
+    // 7. Community Posts:
+    // - Public read (anyone can view community posts)
+    // - Authenticated user can create post with userId == request.auth.uid
+    // - User can update likes/reactions or author can update own post
+    // - Admin can update (e.g. approve/reject) or delete any post
+    // - Author can delete own post
     match /community_posts/{postId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin() || (
+        isSignedIn() && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'likedBy', 'reactions', 'userReactions', 'commentsCount']) ||
+          (resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid)
+        )
+      );
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
-    // Social Comments: Public read, write allowed
+    // 8. Social Comments:
+    // - Public read
+    // - Signed-in user can add comment with userId == request.auth.uid
+    // - User can toggle like or author can edit text
+    // - Author or Admin can delete
     match /social_comments/{commentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin() || (
+        isSignedIn() && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'likedBy']) ||
+          (resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'updatedAt']))
+        )
+      );
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
-    // Saved Items / Bookmarks
-    match /saved_items/{savedId} {
-      allow read, write: if true;
+    // 9. News Posts:
+    // - Public read
+    // - Admin ONLY create and delete
+    // - Update: Admin can update all fields; visitors can update likesCount/likedBy/commentsCount
+    match /news_posts/{newsId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'likedBy', 'commentsCount'])
+      );
     }
 
-    // Newsletter Subscribers
+    // 10. News Comments:
+    // - Public read
+    // - Authenticated user can add comment with userId == request.auth.uid
+    // - Author or Admin can delete
+    match /news_comments/{commentId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin() || (
+        isSignedIn() && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'likedBy']) ||
+          (resource.data.userId == request.auth.uid)
+        )
+      );
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // 11. Newsletter Subscribers:
+    // - Only Admin can read subscribers list (prevents email harvesting)
+    // - Anyone can subscribe (create)
+    // - Only Admin can update status or delete
     match /subscribers/{subscriberId} {
-      allow read, write: if true;
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
     }
 
-    // User Reports
+    // 12. User Reports:
+    // - Admin can read all reports; user can read own reports
+    // - Anyone can submit a report (create)
+    // - Only Admin can update status/notes or delete
     match /user_reports/{reportId} {
-      allow read, write: if true;
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if true;
+      allow update, delete: if isAdmin();
     }
 
-    // Catch-all fallback for any other app collection
+    // 13. Saved Items (Bookmarked destinations/stories):
+    // - Owner or Admin only read/write
+    match /saved_items/{savedId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow write: if isOwner(request.resource.data.userId) || isAdmin();
+    }
+
+    // 14. Ads Settings:
+    // - Public read
+    // - Admin ONLY write/update/delete
+    match /ads_settings/{adId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Default-deny catch-all safety net
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

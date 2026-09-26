@@ -37,7 +37,7 @@ const SEED_REPORTS: UserReport[] = [
 ];
 
 /**
- * Get locally cached reports
+ * Get locally cached reports (Optional read cache only)
  */
 export function getLocalReports(): UserReport[] {
   try {
@@ -48,7 +48,6 @@ export function getLocalReports(): UserReport[] {
         return parsed;
       }
     }
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(SEED_REPORTS));
     return SEED_REPORTS;
   } catch {
     return SEED_REPORTS;
@@ -67,7 +66,8 @@ export function saveLocalReports(reports: UserReport[]) {
 }
 
 /**
- * Submit a new user report (No login required)
+ * Submit a new user report
+ * Firebase is the Primary Source of Truth.
  */
 export async function submitUserReport(data: {
   subject: string;
@@ -95,18 +95,14 @@ export async function submitUserReport(data: {
     status: 'pending',
   };
 
-  // 1. Update local storage
-  const currentList = getLocalReports();
-  const updatedList = [newReport, ...currentList];
-  saveLocalReports(updatedList);
+  // 1. Primary write to Firestore
+  const reportRef = doc(db, 'user_reports', newReport.id);
+  await setDoc(reportRef, newReport);
 
-  // 2. Try Firestore cloud save
-  try {
-    const reportRef = doc(db, 'user_reports', newReport.id);
-    await setDoc(reportRef, newReport);
-  } catch (err) {
-    console.warn('Could not save report to Firestore (using local fallback):', err);
-  }
+  // 2. Update local cache ONLY upon successful Firebase write
+  const currentList = getLocalReports();
+  const updatedList = [newReport, ...currentList.filter((r) => r.id !== newReport.id)];
+  saveLocalReports(updatedList);
 
   return newReport;
 }
@@ -125,14 +121,8 @@ export async function fetchAllUserReports(): Promise<UserReport[]> {
       snapshot.forEach((docSnap) => {
         cloudReports.push(docSnap.data() as UserReport);
       });
-      // Merge with any local ones
-      const local = getLocalReports();
-      const mergedMap = new Map<string, UserReport>();
-      local.forEach((r) => mergedMap.set(r.id, r));
-      cloudReports.forEach((r) => mergedMap.set(r.id, r));
-      const combined = Array.from(mergedMap.values()).sort((a, b) => b.createdAt - a.createdAt);
-      saveLocalReports(combined);
-      return combined;
+      saveLocalReports(cloudReports);
+      return cloudReports;
     }
   } catch (err) {
     console.warn('Firestore reports fetch error, using local fallback:', err);
@@ -143,6 +133,7 @@ export async function fetchAllUserReports(): Promise<UserReport[]> {
 
 /**
  * Update report status (e.g. resolve, dismiss)
+ * Firebase FIRST -> only update local state upon success!
  */
 export async function updateReportStatusInDb(
   reportId: string,
@@ -150,7 +141,16 @@ export async function updateReportStatusInDb(
   adminNotes?: string,
   resolvedBy?: string
 ): Promise<void> {
-  // 1. Update local
+  // 1. Primary write to Firestore
+  const docRef = doc(db, 'user_reports', reportId);
+  await updateDoc(docRef, {
+    status,
+    adminNotes: adminNotes || '',
+    resolvedAt: status === 'resolved' ? Date.now() : null,
+    resolvedBy: status === 'resolved' ? (resolvedBy || 'Admin') : null,
+  });
+
+  // 2. Update local cache upon success
   const current = getLocalReports();
   const updated = current.map((r) => {
     if (r.id === reportId) {
@@ -165,35 +165,19 @@ export async function updateReportStatusInDb(
     return r;
   });
   saveLocalReports(updated);
-
-  // 2. Update Firestore
-  try {
-    const docRef = doc(db, 'user_reports', reportId);
-    await updateDoc(docRef, {
-      status,
-      adminNotes: adminNotes || '',
-      resolvedAt: status === 'resolved' ? Date.now() : null,
-      resolvedBy: status === 'resolved' ? (resolvedBy || 'Admin') : null,
-    });
-  } catch (err) {
-    console.warn('Firestore update report error:', err);
-  }
 }
 
 /**
  * Delete a report
+ * Firebase FIRST -> only remove from local cache upon success!
  */
 export async function deleteReportFromDb(reportId: string): Promise<void> {
-  // 1. Delete from local
+  // 1. Primary delete from Firestore
+  const docRef = doc(db, 'user_reports', reportId);
+  await deleteDoc(docRef);
+
+  // 2. Update local cache upon success
   const current = getLocalReports();
   const filtered = current.filter((r) => r.id !== reportId);
   saveLocalReports(filtered);
-
-  // 2. Delete from Firestore
-  try {
-    const docRef = doc(db, 'user_reports', reportId);
-    await deleteDoc(docRef);
-  } catch (err) {
-    console.warn('Firestore delete report error:', err);
-  }
 }

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Destination, EditorialStory, Festival, Experience, CommunityPost } from '../types';
+import { Destination, EditorialStory, Festival, Experience, CommunityPost, NewsPost } from '../types';
 
 /**
  * Generates clean, lowercase, alphanumeric, hyphen-separated slug from title.
@@ -76,7 +76,29 @@ export function findDestinationBySlug(
   );
   if (byBaseSlug) return byBaseSlug;
 
-  // 4. Suffix match if slug ends with -<id>
+  // 4. Aliases for common canonical destinations
+  if (normalizedSlug === 'sundarbans' || normalizedSlug === 'sundarban') {
+    const sundarban = destinations.find(
+      (d) =>
+        d.id.toLowerCase().includes('sundarban') ||
+        d.title.toLowerCase().includes('sundarban') ||
+        d.titleBn.includes('সুন্দরবন')
+    );
+    if (sundarban) return sundarban;
+  }
+
+  if (normalizedSlug === 'coxs-bazar' || normalizedSlug === 'coxsbazar' || normalizedSlug === 'cox-bazar') {
+    const coxs = destinations.find(
+      (d) =>
+        d.id.toLowerCase().includes('coxs-bazar') ||
+        d.id.toLowerCase().includes('cox') ||
+        d.title.toLowerCase().includes("cox's bazar") ||
+        d.titleBn.includes('কক্সবাজার')
+    );
+    if (coxs) return coxs;
+  }
+
+  // 5. Suffix match if slug ends with -<id>
   const bySuffix = destinations.find((d) => normalizedSlug.endsWith(`-${d.id.toLowerCase()}`));
   if (bySuffix) return bySuffix;
 
@@ -256,6 +278,50 @@ export function findPostBySlug(
   if (byBaseSlug) return byBaseSlug;
 
   const bySuffix = posts.find((p) => normalizedSlug.endsWith(`-${p.id.toLowerCase()}`));
+  if (bySuffix) return bySuffix;
+
+  return null;
+}
+
+/**
+ * Returns a unique SEO slug for a news announcement.
+ */
+export function getNewsSlug(news: NewsPost, allNews: NewsPost[] = []): string {
+  if (!news) return '';
+  const baseSlug = generateSlug(news.title || news.titleBn || '', news.id);
+  if (allNews.length > 0) {
+    const duplicates = allNews.filter(
+      (n) => n.id !== news.id && generateSlug(n.title || n.titleBn || '', n.id) === baseSlug
+    );
+    if (duplicates.length > 0) {
+      return `${baseSlug}-${news.id}`;
+    }
+  }
+  return baseSlug;
+}
+
+/**
+ * Finds news post by slug or ID
+ */
+export function findNewsBySlug(
+  newsList: NewsPost[],
+  slug: string | undefined
+): NewsPost | null {
+  if (!slug || !newsList || newsList.length === 0) return null;
+  const normalizedSlug = slug.toLowerCase().trim();
+
+  const byId = newsList.find((n) => n.id.toLowerCase() === normalizedSlug);
+  if (byId) return byId;
+
+  const byComputedSlug = newsList.find((n) => getNewsSlug(n, newsList) === normalizedSlug);
+  if (byComputedSlug) return byComputedSlug;
+
+  const byBaseSlug = newsList.find(
+    (n) => generateSlug(n.title || n.titleBn || '', n.id) === normalizedSlug
+  );
+  if (byBaseSlug) return byBaseSlug;
+
+  const bySuffix = newsList.find((n) => normalizedSlug.endsWith(`-${n.id.toLowerCase()}`));
   if (bySuffix) return bySuffix;
 
   return null;

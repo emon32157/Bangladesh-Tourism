@@ -114,7 +114,7 @@ Highlights include:
   },
 ];
 
-// In-Memory cache for fast loading and offline support
+// In-Memory cache for fast rendering
 let inMemoryNews: NewsPost[] = [...INITIAL_NEWS_SEED];
 const newsListeners = new Set<(news: NewsPost[]) => void>();
 
@@ -127,7 +127,7 @@ function notifyNewsListeners() {
   newsListeners.forEach((cb) => cb(sorted));
 }
 
-// Load cached news from localStorage on bootstrap
+// Load cached news from localStorage initially
 try {
   const cached = localStorage.getItem('discover_bd_news_posts');
   if (cached) {
@@ -139,7 +139,8 @@ try {
 } catch {}
 
 /**
- * Subscribe to real-time News Posts from Firestore with instant local cache fallback
+ * Subscribe to real-time News Posts from Firestore
+ * Firebase is the Primary Source of Truth!
  */
 export function subscribeToNewsPosts(callback: (news: NewsPost[]) => void): () => void {
   newsListeners.add(callback);
@@ -184,12 +185,12 @@ export function subscribeToNewsPosts(callback: (news: NewsPost[]) => void): () =
           } catch {}
           notifyNewsListeners();
         } else {
-          // Collection is empty, seed initial news into Firestore
-          seedInitialNewsToFirestore();
+          // Collection is empty, notify with initial seed
+          callback(INITIAL_NEWS_SEED);
         }
       },
       (error) => {
-        console.warn('Firestore news listener warning (using memory/local fallback):', error);
+        console.warn('Firestore news listener warning:', error);
       }
     );
   } catch (err) {
@@ -202,21 +203,13 @@ export function subscribeToNewsPosts(callback: (news: NewsPost[]) => void): () =
   };
 }
 
-async function seedInitialNewsToFirestore() {
-  try {
-    for (const post of INITIAL_NEWS_SEED) {
-      const docRef = doc(db, NEWS_COLLECTION, post.id);
-      await setDoc(docRef, cleanDoc(post));
-    }
-  } catch (err) {
-    console.warn('Error seeding news to Firestore:', err);
-  }
-}
-
 /**
  * Create a new Admin News Post
+ * Firebase FIRST -> only on success update local state and cache!
  */
-export async function createNewsPost(post: Omit<NewsPost, 'id' | 'createdAt' | 'likesCount' | 'likedBy' | 'commentsCount'>): Promise<NewsPost> {
+export async function createNewsPost(
+  post: Omit<NewsPost, 'id' | 'createdAt' | 'likesCount' | 'likedBy' | 'commentsCount'>
+): Promise<NewsPost> {
   const newId = 'news_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
   const newPost: NewsPost = {
     ...post,
@@ -227,84 +220,77 @@ export async function createNewsPost(post: Omit<NewsPost, 'id' | 'createdAt' | '
     commentsCount: 0,
   };
 
-  // Immediate optimistic update
+  // 1. Primary write to Firestore
+  const docRef = doc(db, NEWS_COLLECTION, newId);
+  await setDoc(docRef, cleanDoc(newPost));
+
+  // 2. Update local state ONLY after Firebase operation succeeds
   inMemoryNews = [newPost, ...inMemoryNews];
   notifyNewsListeners();
   try {
     localStorage.setItem('discover_bd_news_posts', JSON.stringify(inMemoryNews));
   } catch {}
 
-  // Sync to Firestore
-  try {
-    const docRef = doc(db, NEWS_COLLECTION, newId);
-    await setDoc(docRef, cleanDoc(newPost));
-  } catch (err) {
-    console.warn('Firestore write warning for news creation:', err);
-  }
-
   return newPost;
 }
 
 /**
  * Edit/Update an existing News Post
+ * Firebase FIRST -> only on success update local state and cache!
  */
 export async function updateNewsPost(postId: string, updates: Partial<NewsPost>): Promise<void> {
-  const updatedList = inMemoryNews.map((item) => {
+  const updatedAt = Date.now();
+  // 1. Primary write to Firestore
+  const docRef = doc(db, NEWS_COLLECTION, postId);
+  await setDoc(docRef, cleanDoc({ ...updates, updatedAt }), { merge: true });
+
+  // 2. Update local state ONLY after Firebase operation succeeds
+  inMemoryNews = inMemoryNews.map((item) => {
     if (item.id === postId) {
-      return { ...item, ...updates, updatedAt: Date.now() };
+      return { ...item, ...updates, updatedAt };
     }
     return item;
   });
-
-  inMemoryNews = updatedList;
   notifyNewsListeners();
   try {
     localStorage.setItem('discover_bd_news_posts', JSON.stringify(inMemoryNews));
   } catch {}
-
-  try {
-    const docRef = doc(db, NEWS_COLLECTION, postId);
-    await setDoc(docRef, cleanDoc({ ...updates, updatedAt: Date.now() }), { merge: true });
-  } catch (err) {
-    console.warn('Firestore update warning for news:', err);
-  }
 }
 
 /**
  * Delete a News Post
+ * Firebase FIRST -> only on success update local state and cache!
  */
 export async function deleteNewsPost(postId: string): Promise<void> {
+  // 1. Primary delete in Firestore
+  const docRef = doc(db, NEWS_COLLECTION, postId);
+  await deleteDoc(docRef);
+
+  // 2. Update local state ONLY after Firebase operation succeeds
   inMemoryNews = inMemoryNews.filter((item) => item.id !== postId);
   notifyNewsListeners();
   try {
     localStorage.setItem('discover_bd_news_posts', JSON.stringify(inMemoryNews));
   } catch {}
-
-  try {
-    const docRef = doc(db, NEWS_COLLECTION, postId);
-    await deleteDoc(docRef);
-  } catch (err) {
-    console.warn('Firestore delete warning for news:', err);
-  }
 }
 
 /**
  * Toggle user like on a news post (Like / Unlike)
  */
 export async function toggleNewsLike(postId: string, userId: string): Promise<{ liked: boolean; count: number }> {
-  let isLiked = false;
-  let newCount = 0;
+  const targetPost = inMemoryNews.find((p) => p.id === postId);
+  if (!targetPost) return { liked: false, count: 0 };
 
+  const currentLikedBy = Array.isArray(targetPost.likedBy) ? targetPost.likedBy : [];
+  const alreadyLiked = currentLikedBy.includes(userId);
+  const updatedLikedBy = alreadyLiked
+    ? currentLikedBy.filter((uid) => uid !== userId)
+    : [...currentLikedBy, userId];
+  const newCount = Math.max(0, alreadyLiked ? (targetPost.likesCount || 1) - 1 : (targetPost.likesCount || 0) + 1);
+
+  // 1. Immediately update local in-memory state and notify listeners (Optimistic UI)
   inMemoryNews = inMemoryNews.map((item) => {
     if (item.id === postId) {
-      const alreadyLiked = item.likedBy.includes(userId);
-      const updatedLikedBy = alreadyLiked
-        ? item.likedBy.filter((uid) => uid !== userId)
-        : [...item.likedBy, userId];
-
-      isLiked = !alreadyLiked;
-      newCount = Math.max(0, alreadyLiked ? item.likesCount - 1 : item.likesCount + 1);
-
       return {
         ...item,
         likedBy: updatedLikedBy,
@@ -313,31 +299,30 @@ export async function toggleNewsLike(postId: string, userId: string): Promise<{ 
     }
     return item;
   });
-
   notifyNewsListeners();
+
   try {
     localStorage.setItem('discover_bd_news_posts', JSON.stringify(inMemoryNews));
   } catch {}
 
-  // Firestore update
+  // 2. Synchronize to Firestore
   try {
     const docRef = doc(db, NEWS_COLLECTION, postId);
-    const targetPost = inMemoryNews.find((p) => p.id === postId);
-    if (targetPost) {
-      await setDoc(
-        docRef,
-        cleanDoc({
-          likesCount: targetPost.likesCount,
-          likedBy: targetPost.likedBy,
-        }),
-        { merge: true }
-      );
-    }
+    await setDoc(
+      docRef,
+      cleanDoc({
+        likesCount: newCount,
+        likedBy: updatedLikedBy,
+      }),
+      { merge: true }
+    );
   } catch (err) {
-    console.warn('Firestore like toggle warning:', err);
+    // If Firestore rules reject write (e.g. unseeded doc, visitor permissions),
+    // we log a friendly notice while keeping the user experience completely intact.
+    console.warn('News like cloud sync notice:', err);
   }
 
-  return { liked: isLiked, count: newCount };
+  return { liked: !alreadyLiked, count: newCount };
 }
 
 // -------------------------------------------------------------
@@ -345,7 +330,6 @@ export async function toggleNewsLike(postId: string, userId: string): Promise<{ 
 // -------------------------------------------------------------
 
 export function subscribeToNewsComments(newsId: string, callback: (comments: NewsComment[]) => void): () => void {
-  // Local cache key
   const cacheKey = `discover_bd_comments_${newsId}`;
   let comments: NewsComment[] = [];
   try {
@@ -407,7 +391,17 @@ export async function addNewsComment(
     createdAt: Date.now(),
   };
 
-  // Update local cache
+  // 1. Immediately update local state and cache (Optimistic UI)
+  const post = inMemoryNews.find((p) => p.id === newsId);
+  const newCommentsCount = (post?.commentsCount || 0) + 1;
+  inMemoryNews = inMemoryNews.map((p) => {
+    if (p.id === newsId) {
+      return { ...p, commentsCount: newCommentsCount };
+    }
+    return p;
+  });
+  notifyNewsListeners();
+
   const cacheKey = `discover_bd_comments_${newsId}`;
   try {
     const stored = localStorage.getItem(cacheKey);
@@ -416,34 +410,39 @@ export async function addNewsComment(
     localStorage.setItem(cacheKey, JSON.stringify(list));
   } catch {}
 
-  // Update post comment count
-  inMemoryNews = inMemoryNews.map((p) => {
-    if (p.id === newsId) {
-      return { ...p, commentsCount: (p.commentsCount || 0) + 1 };
-    }
-    return p;
-  });
-  notifyNewsListeners();
-
-  // Sync comment to Firestore
+  // 2. Synchronize to Firestore
   try {
     const commentRef = doc(db, COMMENTS_COLLECTION, newId);
     await setDoc(commentRef, cleanDoc(fullComment));
 
     const postRef = doc(db, NEWS_COLLECTION, newsId);
-    const post = inMemoryNews.find((p) => p.id === newsId);
-    if (post) {
-      await setDoc(postRef, { commentsCount: post.commentsCount }, { merge: true });
-    }
+    await setDoc(postRef, { commentsCount: newCommentsCount }, { merge: true }).catch(() => {});
   } catch (err) {
-    console.warn('Firestore comment write notice:', err);
+    console.warn('Comment cloud sync notice:', err);
   }
 
   return fullComment;
 }
 
 export async function deleteNewsComment(newsId: string, commentId: string): Promise<void> {
-  // Update local cache
+  // 1. Primary delete from Firestore
+  const commentRef = doc(db, COMMENTS_COLLECTION, commentId);
+  await deleteDoc(commentRef);
+
+  const post = inMemoryNews.find((p) => p.id === newsId);
+  const newCommentsCount = Math.max(0, (post?.commentsCount || 1) - 1);
+  const postRef = doc(db, NEWS_COLLECTION, newsId);
+  await setDoc(postRef, { commentsCount: newCommentsCount }, { merge: true }).catch(() => {});
+
+  // 2. Update local state
+  inMemoryNews = inMemoryNews.map((p) => {
+    if (p.id === newsId) {
+      return { ...p, commentsCount: newCommentsCount };
+    }
+    return p;
+  });
+  notifyNewsListeners();
+
   const cacheKey = `discover_bd_comments_${newsId}`;
   try {
     const stored = localStorage.getItem(cacheKey);
@@ -453,27 +452,4 @@ export async function deleteNewsComment(newsId: string, commentId: string): Prom
       localStorage.setItem(cacheKey, JSON.stringify(filtered));
     }
   } catch {}
-
-  // Decrement comment count on post
-  inMemoryNews = inMemoryNews.map((p) => {
-    if (p.id === newsId) {
-      return { ...p, commentsCount: Math.max(0, (p.commentsCount || 1) - 1) };
-    }
-    return p;
-  });
-  notifyNewsListeners();
-
-  // Sync to Firestore
-  try {
-    const commentRef = doc(db, COMMENTS_COLLECTION, commentId);
-    await deleteDoc(commentRef);
-
-    const postRef = doc(db, NEWS_COLLECTION, newsId);
-    const post = inMemoryNews.find((p) => p.id === newsId);
-    if (post) {
-      await setDoc(postRef, { commentsCount: post.commentsCount }, { merge: true });
-    }
-  } catch (err) {
-    console.warn('Firestore comment delete notice:', err);
-  }
 }

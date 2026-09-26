@@ -1,6 +1,8 @@
 /**
- * Newsletter Subscriptions Management Service (Firestore & Local Fallback)
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
  */
+
 import {
   db,
   doc,
@@ -29,7 +31,7 @@ export const isValidEmail = (email: string): boolean => {
   return re.test(email.trim());
 };
 
-// Get locally cached subscribers
+// Get locally cached subscribers (Optional read cache only)
 export const getCachedSubscribers = (): NewsletterSubscriber[] => {
   try {
     const raw = localStorage.getItem(LOCAL_SUBSCRIBERS_KEY);
@@ -51,6 +53,7 @@ export const setCachedSubscribers = (list: NewsletterSubscriber[]) => {
 
 /**
  * Subscribe an email to the newsletter in Firestore
+ * Firebase is the Primary Source of Truth!
  */
 export const subscribeNewsletter = async (
   emailInput: string,
@@ -78,31 +81,11 @@ export const subscribeNewsletter = async (
 
   try {
     const subscriberRef = doc(db, 'subscribers', docId);
-    
-    // Check if doc exists
-    let existingDocSnap = null;
-    try {
-      existingDocSnap = await getDoc(subscriberRef);
-    } catch {
-      // getDoc might fail if non-admin read rules apply; proceed to setDoc
-    }
 
-    if (existingDocSnap && existingDocSnap.exists()) {
-      const existingData = existingDocSnap.data() as NewsletterSubscriber;
-      if (existingData.status === 'active') {
-        return {
-          success: true,
-          alreadySubscribed: true,
-          messageEn: 'You are already subscribed to the Bangladesh Tourism newsletter!',
-          messageBn: 'আপনি ইতোমধ্যে আমাদের নিউজলেটারের সাথে সংযুক্ত আছেন!',
-        };
-      }
-    }
-
-    // Write to Firestore
+    // Primary write to Firestore
     await setDoc(subscriberRef, subscriberData, { merge: true });
 
-    // Update local cache
+    // Update local cache ONLY upon successful Firebase write
     const cached = getCachedSubscribers();
     const updated = [subscriberData, ...cached.filter((s) => s.id !== docId)];
     setCachedSubscribers(updated);
@@ -113,17 +96,11 @@ export const subscribeNewsletter = async (
       messageBn: 'নিউজলেটারে সাবস্ক্রাইব করার জন্য ধন্যবাদ! নিয়মিত ভ্রমণ গাইড ও ঐতিহাসিক তথ্য আপনার ইমেইলে পৌঁছে যাবে।',
     };
   } catch (error) {
-    console.warn('Firestore write warning for newsletter subscription, saving locally:', error);
-    
-    // Offline resilience
-    const cached = getCachedSubscribers();
-    const updated = [subscriberData, ...cached.filter((s) => s.id !== docId)];
-    setCachedSubscribers(updated);
-
+    console.error('Firestore newsletter write error:', error);
     return {
-      success: true,
-      messageEn: 'Subscription received! You are subscribed to our updates.',
-      messageBn: 'সাবস্ক্রিপশন সম্পন্ন হয়েছে! আমাদের নতুন আপডেট নিয়মিত পাবেন।',
+      success: false,
+      messageEn: 'Failed to subscribe. Please try again.',
+      messageBn: 'সাবস্ক্রিপশন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।',
     };
   }
 };
@@ -133,9 +110,6 @@ export const subscribeNewsletter = async (
  */
 export const fetchSubscribers = async (): Promise<NewsletterSubscriber[]> => {
   const map = new Map<string, NewsletterSubscriber>();
-
-  // Add cached first
-  getCachedSubscribers().forEach((s) => map.set(s.id, s));
 
   try {
     const q = query(collection(db, 'subscribers'), orderBy('createdAt', 'desc'));
@@ -149,13 +123,14 @@ export const fetchSubscribers = async (): Promise<NewsletterSubscriber[]> => {
         id,
       });
     });
+
+    const list = Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    setCachedSubscribers(list);
+    return list;
   } catch (err) {
     console.warn('Could not fetch subscribers from Firestore (using cached):', err);
+    return getCachedSubscribers();
   }
-
-  const list = Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  setCachedSubscribers(list);
-  return list;
 };
 
 /**
@@ -182,7 +157,7 @@ export const subscribeToSubscribersList = (
         onData(items);
       },
       (err) => {
-        console.warn('Snapshot listener for subscribers error:', err);
+        console.warn('Snapshot listener for subscribers notice:', err);
         if (onError) onError(err);
         onData(getCachedSubscribers());
       }
@@ -196,31 +171,29 @@ export const subscribeToSubscribersList = (
 
 /**
  * Delete a subscriber (Admin only)
+ * Firebase FIRST -> only update cache on success!
  */
 export const deleteSubscriber = async (id: string): Promise<void> => {
-  try {
-    await deleteDoc(doc(db, 'subscribers', id));
-  } catch (err) {
-    console.warn('Failed to delete subscriber from Firestore:', err);
-  }
+  // 1. Primary delete from Firestore
+  await deleteDoc(doc(db, 'subscribers', id));
 
+  // 2. Update local cache upon success
   const cached = getCachedSubscribers().filter((s) => s.id !== id);
   setCachedSubscribers(cached);
 };
 
 /**
  * Update subscriber status (Admin only)
+ * Firebase FIRST -> only update cache on success!
  */
 export const updateSubscriberStatus = async (
   id: string,
   status: SubscriberStatus
 ): Promise<void> => {
-  try {
-    await updateDoc(doc(db, 'subscribers', id), { status });
-  } catch (err) {
-    console.warn('Failed to update subscriber status in Firestore:', err);
-  }
+  // 1. Primary write to Firestore
+  await updateDoc(doc(db, 'subscribers', id), { status });
 
+  // 2. Update local cache upon success
   const cached = getCachedSubscribers().map((s) =>
     s.id === id ? { ...s, status } : s
   );

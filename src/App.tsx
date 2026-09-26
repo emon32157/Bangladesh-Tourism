@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, useNavigate, useLocation } from 'react-router-dom';
-import { motion, useScroll, useSpring, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ArrowUp } from 'lucide-react';
 import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
@@ -32,7 +32,11 @@ import { GisMapSection } from './components/GisMapSection';
 import { DistrictsSection } from './components/DistrictsSection';
 import { RecentShowcaseSlider } from './components/RecentShowcaseSlider';
 import { NewsSection } from './components/NewsSection';
+import { NewsDetailPage } from './components/NewsDetailPage';
+import { AdRenderer } from './components/AdRenderer';
 import { InfoPageModal, InfoPageType } from './components/InfoPageModal';
+import { NotFoundPage } from './components/NotFoundPage';
+import { AdminAccessDenied } from './components/AdminAccessDenied';
 
 import {
   auth,
@@ -51,21 +55,16 @@ import {
   SEED_COMMUNITY_POSTS,
 } from './data/bangladeshData';
 import { BANGLADESH_DISTRICTS } from './data/bangladeshDistricts';
-import { Destination, Experience, Festival, EditorialStory, Language, CommunityPost, AppUser } from './types';
-import { syncFirebaseUserProfile, checkIsUserAdmin } from './lib/userRoles';
+import { Destination, Experience, Festival, EditorialStory, Language, CommunityPost, AppUser, NewsPost, AllAdsConfig } from './types';
+import { getCachedAdsConfig, subscribeToAdsConfig } from './lib/adsService';
+import { syncFirebaseUserProfile, checkIsUserAdmin, verifyFirebaseAdminStatus } from './lib/userRoles';
 import {
   subscribeToAllFirestoreData,
   saveDestinationToFirebase,
-  deleteDestinationFromFirebase,
-  saveExperienceToFirebase,
-  deleteExperienceFromFirebase,
-  saveFestivalToFirebase,
-  deleteFestivalFromFirebase,
   saveStoryToFirebase,
-  deleteStoryFromFirebase,
   saveCommunityPostToFirebase,
-  deleteCommunityPostFromFirebase,
 } from './lib/firestoreSync';
+import { subscribeToNewsPosts, INITIAL_NEWS_SEED } from './lib/newsService';
 import {
   updateDestinationSeo,
   updateStorySeo,
@@ -74,6 +73,7 @@ import {
   updateDistrictSeo,
   updateInfoPageSeo,
   updateSectionSeo,
+  updateNewsSeo,
   resetSeoToDefault,
 } from './lib/seo';
 import {
@@ -89,6 +89,8 @@ import {
   findPostBySlug,
   getDistrictSlug,
   findDistrictBySlug,
+  getNewsSlug,
+  findNewsBySlug,
 } from './lib/slugs';
 import { getCanonicalDistrict } from './lib/districtMatcher';
 
@@ -164,9 +166,34 @@ function MainAppContent() {
     }
   });
 
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
+  const [newsList, setNewsList] = useState<NewsPost[]>(() => {
     try {
-      const stored = localStorage.getItem('discover_bd_guest_user');
+      const stored = localStorage.getItem('discover_bd_news_posts');
+      return stored ? JSON.parse(stored) : INITIAL_NEWS_SEED;
+    } catch {
+      return INITIAL_NEWS_SEED;
+    }
+  });
+
+  const [authInitialized, setAuthInitialized] = useState<boolean>(false);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'profile' | 'forgot_password'>('login');
+
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
+    if (auth.currentUser) {
+      const fbUser = auth.currentUser;
+      return {
+        uid: fbUser.uid,
+        displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Traveler',
+        email: fbUser.email || null,
+        photoURL: fbUser.photoURL || null,
+        role: 'user',
+        isAnonymous: fbUser.isAnonymous,
+        createdAt: fbUser.metadata?.creationTime ? Date.parse(fbUser.metadata.creationTime) : Date.now(),
+      };
+    }
+    try {
+      const stored = localStorage.getItem('discover_bd_user_session');
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
@@ -182,12 +209,19 @@ function MainAppContent() {
     }
   });
 
+  // Routing and 404 state
+  const [is404, setIs404] = useState<boolean>(false);
+  const [notFoundType, setNotFoundType] = useState<'destination' | 'news' | 'post' | 'festival' | 'experience' | 'district' | 'page'>('page');
+  const [notFoundSlug, setNotFoundSlug] = useState<string>('');
+  const [isAdminAccessDenied, setIsAdminAccessDenied] = useState<boolean>(false);
+
   // Modals state
   const [selectedDestination, setSelectedDestination] = useState<Destination | null>(null);
   const [selectedStory, setSelectedStory] = useState<EditorialStory | null>(null);
   const [selectedFestival, setSelectedFestival] = useState<Festival | null>(null);
   const [selectedExperience, setSelectedExperience] = useState<Experience | null>(null);
   const [selectedCommunityPostId, setSelectedCommunityPostId] = useState<string | null>(null);
+  const [selectedNewsPost, setSelectedNewsPost] = useState<NewsPost | null>(null);
   const [infoPage, setInfoPage] = useState<InfoPageType | null>(null);
 
   const [isTripPlannerOpen, setIsTripPlannerOpen] = useState(false);
@@ -202,23 +236,46 @@ function MainAppContent() {
   const [selectedDistrictFilter, setSelectedDistrictFilter] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // Smooth scroll progress tracking
-  const { scrollYProgress, scrollY } = useScroll();
-  const scaleX = useSpring(scrollYProgress, {
-    stiffness: 100,
-    damping: 30,
-    restDelta: 0.001,
-  });
+  // Smooth scroll progress and scroll-to-top tracking
+  const [scrollProgress, setScrollProgress] = useState(0);
 
   useEffect(() => {
-    return scrollY.on('change', (latest) => {
-      setShowScrollTop(latest > 350);
+    const handleScroll = () => {
+      const totalScroll = document.documentElement.scrollHeight - window.innerHeight;
+      const currentScroll = window.scrollY;
+      setShowScrollTop(currentScroll > 350);
+      if (totalScroll > 0) {
+        setScrollProgress(Math.min(1, Math.max(0, currentScroll / totalScroll)));
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Subscribe to real-time news
+  useEffect(() => {
+    const unsub = subscribeToNewsPosts((posts) => {
+      if (posts && posts.length > 0) {
+        setNewsList(posts);
+      }
     });
-  }, [scrollY]);
+    return unsub;
+  }, []);
 
-  // Synchronize route pathname and search params with modal, filter, and SEO states
+  // Dynamic Ads Management State & Realtime Sync
+  const [adsConfig, setAdsConfig] = useState<AllAdsConfig>(() => getCachedAdsConfig());
+
   useEffect(() => {
-    const pathname = location.pathname;
+    const unsub = subscribeToAdsConfig((updated) => {
+      setAdsConfig(updated);
+    });
+    return unsub;
+  }, []);
+
+  // Synchronize route pathname and search params with views, 404, RBAC admin, and SEO
+  useEffect(() => {
+    const pathname = location.pathname.length > 1 ? location.pathname.replace(/\/+$/, '') : location.pathname;
     const searchParams = new URLSearchParams(location.search);
 
     // Sync language if query param present
@@ -227,106 +284,201 @@ function MainAppContent() {
       setLanguage(langParam as Language);
     }
 
-    // Legacy query params for backwards-compatibility deep links
-    const legacyDest = searchParams.get('destination');
-    const legacyStory = searchParams.get('story');
-    const legacyFest = searchParams.get('festival');
-    const legacyExp = searchParams.get('experience');
-    const legacyPost = searchParams.get('post');
+    // Reset transient routing states
+    setIs404(false);
+    setIsAdminAccessDenied(false);
 
-    // 1. Destination Route: /destination/:slug
+    // 1. Home Route: /
+    if (pathname === '/') {
+      setSelectedDestination(null);
+      setSelectedStory(null);
+      setSelectedCommunityPostId(null);
+      setSelectedFestival(null);
+      setSelectedExperience(null);
+      setSelectedNewsPost(null);
+      setInfoPage(null);
+      setIsAdminOpen(false);
+
+      if (activeSection && activeSection !== 'hero') {
+        updateSectionSeo(activeSection, language);
+      } else {
+        resetSeoToDefault(language);
+      }
+      return;
+    }
+
+    // 2. Section Scroll Routes: /destinations, /news, /community
+    if (pathname === '/destinations') {
+      setActiveSection('destinations');
+      setTimeout(() => {
+        const el = document.getElementById('destinations');
+        if (el) {
+          const yOffset = -90;
+          const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+        }
+      }, 50);
+      updateSectionSeo('destinations', language);
+      return;
+    }
+
+    if (pathname === '/news') {
+      setActiveSection('news');
+      setSelectedNewsPost(null);
+      setTimeout(() => {
+        const el = document.getElementById('news');
+        if (el) {
+          const yOffset = -90;
+          const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+        }
+      }, 50);
+      return;
+    }
+
+    if (pathname === '/community') {
+      setActiveSection('community');
+      setTimeout(() => {
+        const el = document.getElementById('community');
+        if (el) {
+          const yOffset = -90;
+          const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+        }
+      }, 50);
+      updateSectionSeo('gallery', language);
+      return;
+    }
+
+    // 3. User Profile Route: /profile
+    if (pathname === '/profile') {
+      const isAuth = Boolean(currentUser || auth.currentUser);
+      if (isAuth) {
+        setAuthModalMode('profile');
+      } else {
+        setAuthModalMode('login');
+      }
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    // 4. Admin Protected Route: /admin
+    if (pathname === '/admin') {
+      const isVerifiedAdmin = checkIsUserAdmin(currentUser);
+      if (isVerifiedAdmin) {
+        setIsAdminOpen(true);
+        setIsAdminAccessDenied(false);
+      } else {
+        setIsAdminOpen(false);
+        setIsAdminAccessDenied(true);
+      }
+      return;
+    }
+
+    // 5. Destination Dynamic Route: /destination/:slug
     if (pathname.startsWith('/destination/')) {
       const slug = decodeURIComponent(pathname.replace('/destination/', '').trim());
       const dest = findDestinationBySlug(destinations, slug);
       if (dest) {
         setSelectedDestination(dest);
+        setIs404(false);
         updateDestinationSeo(dest, language);
+      } else {
+        setSelectedDestination(null);
+        setIs404(true);
+        setNotFoundType('destination');
+        setNotFoundSlug(slug);
       }
-    } else if (legacyDest) {
-      const dest = findDestinationBySlug(destinations, legacyDest);
-      if (dest) {
-        navigate(`/destination/${getDestinationSlug(dest, destinations)}`, { replace: true });
-        return;
-      }
-    } else {
-      setSelectedDestination(null);
+      return;
     }
 
-    // 2. Post / Story Route: /post/:slug or /story/:slug
+    // 6. News Dynamic Route: /news/:slug
+    if (pathname.startsWith('/news/')) {
+      const slug = decodeURIComponent(pathname.replace('/news/', '').trim());
+      const news = findNewsBySlug(newsList, slug);
+      if (news) {
+        setSelectedNewsPost(news);
+        setIs404(false);
+        updateNewsSeo(news, language);
+      } else {
+        setSelectedNewsPost(null);
+        setIs404(true);
+        setNotFoundType('news');
+        setNotFoundSlug(slug);
+      }
+      return;
+    }
+
+    // 7. Post / Story Dynamic Route: /post/:slug or /story/:slug
     if (pathname.startsWith('/post/') || pathname.startsWith('/story/')) {
       const slug = decodeURIComponent(pathname.replace(/^\/(post|story)\//, '').trim());
       const story = findStoryBySlug(stories, slug);
       if (story) {
         setSelectedStory(story);
         setSelectedCommunityPostId(null);
+        setIs404(false);
         updateStorySeo(story, language);
-      } else {
-        const post = findPostBySlug(communityPosts, slug);
-        if (post) {
-          setSelectedCommunityPostId(post.id);
-          setSelectedStory(null);
-        }
-      }
-    } else if (legacyStory) {
-      const story = findStoryBySlug(stories, legacyStory);
-      if (story) {
-        navigate(`/post/${getStorySlug(story, stories)}`, { replace: true });
         return;
       }
-    } else if (legacyPost) {
-      const post = findPostBySlug(communityPosts, legacyPost);
+
+      const post = findPostBySlug(communityPosts, slug);
       if (post) {
-        navigate(`/post/${getPostSlug(post, communityPosts)}`, { replace: true });
+        setSelectedCommunityPostId(post.id);
+        setSelectedStory(null);
+        setIs404(false);
         return;
       }
-    } else {
+
       setSelectedStory(null);
       setSelectedCommunityPostId(null);
+      setIs404(true);
+      setNotFoundType('post');
+      setNotFoundSlug(slug);
+      return;
     }
 
-    // 3. Festival Route: /festival/:slug
+    // 8. Festival Dynamic Route: /festival/:slug
     if (pathname.startsWith('/festival/')) {
       const slug = decodeURIComponent(pathname.replace('/festival/', '').trim());
       const fest = findFestivalBySlug(festivals, slug);
       if (fest) {
         setSelectedFestival(fest);
+        setIs404(false);
         updateFestivalSeo(fest, language);
+      } else {
+        setSelectedFestival(null);
+        setIs404(true);
+        setNotFoundType('festival');
+        setNotFoundSlug(slug);
       }
-    } else if (legacyFest) {
-      const fest = findFestivalBySlug(festivals, legacyFest);
-      if (fest) {
-        navigate(`/festival/${getFestivalSlug(fest, festivals)}`, { replace: true });
-        return;
-      }
-    } else {
-      setSelectedFestival(null);
+      return;
     }
 
-    // 4. Experience Route: /experience/:slug
+    // 9. Experience Dynamic Route: /experience/:slug
     if (pathname.startsWith('/experience/')) {
       const slug = decodeURIComponent(pathname.replace('/experience/', '').trim());
       const exp = findExperienceBySlug(experiences, slug);
       if (exp) {
         setSelectedExperience(exp);
+        setIs404(false);
         updateExperienceSeo(exp, language);
+      } else {
+        setSelectedExperience(null);
+        setIs404(true);
+        setNotFoundType('experience');
+        setNotFoundSlug(slug);
       }
-    } else if (legacyExp) {
-      const exp = findExperienceBySlug(experiences, legacyExp);
-      if (exp) {
-        navigate(`/experience/${getExperienceSlug(exp, experiences)}`, { replace: true });
-        return;
-      }
-    } else {
-      setSelectedExperience(null);
+      return;
     }
 
-    // 5. District Route: /district/:districtName
+    // 10. District Route: /district/:districtName
     if (pathname.startsWith('/district/')) {
       const slug = decodeURIComponent(pathname.replace('/district/', '').trim());
       const districtNames = BANGLADESH_DISTRICTS.map((d) => d.nameEn);
       const matchedDistrict = findDistrictBySlug(slug, districtNames);
       if (matchedDistrict) {
         setSelectedDistrictFilter(matchedDistrict);
+        setIs404(false);
         updateDistrictSeo(matchedDistrict, language);
         setTimeout(() => {
           const destSection = document.getElementById('destinations');
@@ -336,12 +488,16 @@ function MainAppContent() {
             window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
           }
         }, 100);
+      } else {
+        setSelectedDistrictFilter(null);
+        setIs404(true);
+        setNotFoundType('district');
+        setNotFoundSlug(slug);
       }
-    } else {
-      setSelectedDistrictFilter(null);
+      return;
     }
 
-    // 6. Info Pages: /about, /contact, /privacy, /terms
+    // 11. Static Info Pages: /about, /contact, /privacy, /terms
     if (
       pathname === '/about' ||
       pathname === '/contact' ||
@@ -350,46 +506,15 @@ function MainAppContent() {
     ) {
       const pageKey = pathname.slice(1) as InfoPageType;
       setInfoPage(pageKey);
+      setIs404(false);
       updateInfoPageSeo(pageKey, language);
-    } else {
-      setInfoPage(null);
+      return;
     }
 
-    // 7. General Views via searchParams: ?view=planner, ?view=wishlist, ?view=search, ?view=auth, ?view=admin, ?view=report, etc.
-    const view = searchParams.get('view');
-    setIsTripPlannerOpen(view === 'planner');
-    setIsSavedModalOpen(view === 'wishlist');
-    setIsSearchOpen(view === 'search');
-    setIsAuthModalOpen(view === 'auth');
-    setIsUploadModalOpen(view === 'upload');
-    setIsStorySubmitOpen(view === 'story-submit' || view === 'write-story');
-    setIsAdminOpen(view === 'admin');
-    setIsReportModalOpen(view === 'report');
-
-    // Section scroll if ?section=...
-    const section = searchParams.get('section');
-    if (section) {
-      setActiveSection(section);
-      const el = document.getElementById(section);
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    // Reset SEO to default if on home route with no active modal
-    if (
-      pathname === '/' &&
-      !legacyDest &&
-      !legacyStory &&
-      !legacyFest &&
-      !legacyExp &&
-      !legacyPost &&
-      !view
-    ) {
-      if (activeSection && activeSection !== 'hero') {
-        updateSectionSeo(activeSection, language);
-      } else {
-        resetSeoToDefault(language);
-      }
-    }
+    // 12. If none of the valid routes matched -> Custom 404
+    setIs404(true);
+    setNotFoundType('page');
+    setNotFoundSlug(pathname);
   }, [
     location.pathname,
     location.search,
@@ -398,12 +523,14 @@ function MainAppContent() {
     festivals,
     experiences,
     communityPosts,
+    newsList,
     language,
+    currentUser,
     activeSection,
     navigate,
   ]);
 
-  // Route-bound modal handlers
+  // Route-bound modal and navigation handlers
   const handleSelectDestination = (dest: Destination | null) => {
     if (dest) {
       navigate(`/destination/${getDestinationSlug(dest, destinations)}`);
@@ -444,12 +571,19 @@ function MainAppContent() {
     }
   };
 
+  const handleSelectNews = (post: NewsPost | null) => {
+    if (post) {
+      navigate(`/news/${getNewsSlug(post, newsList)}`);
+    } else {
+      navigate('/news');
+    }
+  };
+
   const handleSelectDistrict = (districtName: string) => {
     const canonical = getCanonicalDistrict(districtName);
     const targetName = canonical ? canonical.nameEn : districtName;
     setSelectedDistrictFilter(targetName);
     navigate(`/district/${getDistrictSlug(targetName)}`);
-    // Immediately scroll to destinations section with sticky navbar offset
     setTimeout(() => {
       const el = document.getElementById('destinations');
       if (el) {
@@ -463,7 +597,6 @@ function MainAppContent() {
   const handleClearDistrictFilter = () => {
     setSelectedDistrictFilter(null);
     navigate('/');
-    // Smoothly scroll back to destinations section
     setTimeout(() => {
       const el = document.getElementById('destinations');
       if (el) {
@@ -482,72 +615,86 @@ function MainAppContent() {
     }
   };
 
-  // Views with query parameter bindings
-  const updateQueryView = (viewName: string | null) => {
-    const search = new URLSearchParams(location.search);
-    if (viewName) {
-      search.set('view', viewName);
-    } else {
-      search.delete('view');
-    }
-    const query = search.toString();
-    navigate(`${location.pathname}${query ? `?${query}` : ''}`);
-  };
-
   const handleOpenTripPlanner = (open: boolean, preselect: Destination | null = null) => {
     setTripPlannerPreselect(preselect);
     setIsTripPlannerOpen(open);
-    updateQueryView(open ? 'planner' : null);
   };
 
   const handleOpenSearch = (open: boolean) => {
     setIsSearchOpen(open);
-    updateQueryView(open ? 'search' : null);
   };
 
   const handleOpenSavedModal = (open: boolean) => {
-    if (open && !currentUser) {
+    const isAuth = Boolean(currentUser || auth.currentUser);
+    if (open && !isAuth) {
+      setAuthModalMode('login');
       setIsAuthModalOpen(true);
-      updateQueryView('auth');
       return;
     }
     setIsSavedModalOpen(open);
-    updateQueryView(open ? 'wishlist' : null);
   };
 
-  const handleOpenAuth = (open: boolean) => {
-    setIsAuthModalOpen(open);
-    updateQueryView(open ? 'auth' : null);
+  const handleOpenLogin = () => {
+    setAuthModalMode('login');
+    setIsAuthModalOpen(true);
+  };
+
+  const handleOpenProfile = () => {
+    const isAuth = Boolean(currentUser || auth.currentUser);
+    if (isAuth) {
+      setAuthModalMode('profile');
+    } else {
+      setAuthModalMode('login');
+    }
+    setIsAuthModalOpen(true);
+  };
+
+  const handleOpenAuth = (modeOrOpen?: boolean | 'login' | 'register' | 'profile' | 'forgot_password') => {
+    if (typeof modeOrOpen === 'boolean' && !modeOrOpen) {
+      setIsAuthModalOpen(false);
+      return;
+    }
+    const isAuth = Boolean(currentUser || auth.currentUser);
+    if (isAuth) {
+      setAuthModalMode('profile');
+    } else {
+      const targetMode = typeof modeOrOpen === 'string' && modeOrOpen !== 'profile' ? modeOrOpen : 'login';
+      setAuthModalMode(targetMode);
+    }
+    setIsAuthModalOpen(true);
   };
 
   const handleOpenUpload = (open: boolean) => {
-    if (open && !currentUser) {
+    const isAuth = Boolean(currentUser || auth.currentUser);
+    if (open && !isAuth) {
+      setAuthModalMode('login');
       setIsAuthModalOpen(true);
-      updateQueryView('auth');
       return;
     }
     setIsUploadModalOpen(open);
-    updateQueryView(open ? 'upload' : null);
   };
 
   const handleOpenStorySubmit = (open: boolean) => {
-    if (open && !currentUser) {
+    const isAuth = Boolean(currentUser || auth.currentUser);
+    if (open && !isAuth) {
+      setAuthModalMode('login');
       setIsAuthModalOpen(true);
-      updateQueryView('auth');
       return;
     }
     setIsStorySubmitOpen(open);
-    updateQueryView(open ? 'story-submit' : null);
   };
 
   const handleOpenAdmin = (open: boolean) => {
-    setIsAdminOpen(open);
-    updateQueryView(open ? 'admin' : null);
+    if (open) {
+      navigate('/admin');
+    } else {
+      setIsAdminOpen(false);
+      navigate('/');
+    }
   };
 
   const handleOpenReport = (open: boolean) => {
     setIsReportModalOpen(open);
-    updateQueryView(open ? 'report' : null);
   };
 
   const handleToggleLanguage = (lang: Language) => {
@@ -568,18 +715,9 @@ function MainAppContent() {
     }
   };
 
-  // Real-time Cloud Persistence handlers
+  // State updates from Admin Panel (Firebase writes are executed in AdminPanelModal)
   const handleUpdateDestinations = (newDestinations: Destination[]) => {
     const cleanList = dedupeById(newDestinations);
-    const newIds = new Set(cleanList.map((d) => d.id));
-    destinations.forEach((oldD) => {
-      if (!newIds.has(oldD.id)) {
-        deleteDestinationFromFirebase(oldD.id);
-      }
-    });
-    cleanList.forEach((d) => {
-      saveDestinationToFirebase(d);
-    });
     setDestinations(cleanList);
     try {
       localStorage.setItem('discover_bd_destinations', JSON.stringify(cleanList));
@@ -589,15 +727,6 @@ function MainAppContent() {
   };
 
   const handleUpdateExperiences = (newExp: Experience[]) => {
-    const newIds = new Set(newExp.map((e) => e.id));
-    experiences.forEach((oldE) => {
-      if (!newIds.has(oldE.id)) {
-        deleteExperienceFromFirebase(oldE.id);
-      }
-    });
-    newExp.forEach((e) => {
-      saveExperienceToFirebase(e);
-    });
     setExperiences(newExp);
     try {
       localStorage.setItem('discover_bd_experiences', JSON.stringify(newExp));
@@ -607,15 +736,6 @@ function MainAppContent() {
   };
 
   const handleUpdateFestivals = (newFest: Festival[]) => {
-    const newIds = new Set(newFest.map((f) => f.id));
-    festivals.forEach((oldF) => {
-      if (!newIds.has(oldF.id)) {
-        deleteFestivalFromFirebase(oldF.id);
-      }
-    });
-    newFest.forEach((f) => {
-      saveFestivalToFirebase(f);
-    });
     setFestivals(newFest);
     try {
       localStorage.setItem('discover_bd_festivals', JSON.stringify(newFest));
@@ -625,15 +745,6 @@ function MainAppContent() {
   };
 
   const handleUpdateStories = (newStories: EditorialStory[]) => {
-    const newIds = new Set(newStories.map((s) => s.id));
-    stories.forEach((oldS) => {
-      if (!newIds.has(oldS.id)) {
-        deleteStoryFromFirebase(oldS.id);
-      }
-    });
-    newStories.forEach((s) => {
-      saveStoryToFirebase(s);
-    });
     setStories(newStories);
     try {
       localStorage.setItem('discover_bd_stories', JSON.stringify(newStories));
@@ -643,15 +754,6 @@ function MainAppContent() {
   };
 
   const handleUpdateCommunityPosts = (newPosts: CommunityPost[]) => {
-    const newIds = new Set(newPosts.map((p) => p.id));
-    communityPosts.forEach((oldP) => {
-      if (!newIds.has(oldP.id)) {
-        deleteCommunityPostFromFirebase(oldP.id);
-      }
-    });
-    newPosts.forEach((p) => {
-      saveCommunityPostToFirebase(p);
-    });
     setCommunityPosts(newPosts);
     try {
       localStorage.setItem('discover_bd_community_posts', JSON.stringify(newPosts));
@@ -678,62 +780,37 @@ function MainAppContent() {
     }
   };
 
-  // Firebase Real-time Synchronization
+  // Firebase Real-time Synchronization (Firebase = PRIMARY SOURCE OF TRUTH)
   useEffect(() => {
     const unsubscribeFirestore = subscribeToAllFirestoreData({
       onDestinations: (cloudDestinations) => {
         if (cloudDestinations && cloudDestinations.length > 0) {
           const merged = dedupeById([...cloudDestinations, ...DESTINATIONS]);
           setDestinations(merged);
-          try {
-            localStorage.setItem('discover_bd_destinations', JSON.stringify(merged));
-          } catch (e) {
-            console.error(e);
-          }
         }
       },
       onExperiences: (cloudExperiences) => {
         if (cloudExperiences && cloudExperiences.length > 0) {
           const merged = dedupeById([...cloudExperiences, ...EXPERIENCES]);
           setExperiences(merged);
-          try {
-            localStorage.setItem('discover_bd_experiences', JSON.stringify(merged));
-          } catch (e) {
-            console.error(e);
-          }
         }
       },
       onFestivals: (cloudFestivals) => {
         if (cloudFestivals && cloudFestivals.length > 0) {
           const merged = dedupeById([...cloudFestivals, ...FESTIVALS]);
           setFestivals(merged);
-          try {
-            localStorage.setItem('discover_bd_festivals', JSON.stringify(merged));
-          } catch (e) {
-            console.error(e);
-          }
         }
       },
       onStories: (cloudStories) => {
         if (cloudStories && cloudStories.length > 0) {
           const merged = dedupeById([...cloudStories, ...EDITORIAL_STORIES]);
           setStories(merged);
-          try {
-            localStorage.setItem('discover_bd_stories', JSON.stringify(merged));
-          } catch (e) {
-            console.error(e);
-          }
         }
       },
       onCommunityPosts: (cloudCommunityPosts) => {
         if (cloudCommunityPosts && cloudCommunityPosts.length > 0) {
           const merged = dedupeById([...cloudCommunityPosts, ...SEED_COMMUNITY_POSTS]);
           setCommunityPosts(merged);
-          try {
-            localStorage.setItem('discover_bd_community_posts', JSON.stringify(merged));
-          } catch (e) {
-            console.error(e);
-          }
         }
       },
     });
@@ -743,53 +820,83 @@ function MainAppContent() {
     };
   }, []);
 
-  // Listen to Firebase Auth state changes
+  // Listen to Firebase Auth state changes (Firebase Auth = Primary Source of Truth)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
+      setAuthLoading(false);
+      setAuthInitialized(true);
+
       if (firebaseUser) {
+        // Immediate synchronous update to prevent transient null state
+        const immediateUser: AppUser = {
+          uid: firebaseUser.uid,
+          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Traveler',
+          email: firebaseUser.email || null,
+          photoURL: firebaseUser.photoURL || null,
+          role: 'user',
+          isAnonymous: firebaseUser.isAnonymous,
+          createdAt: firebaseUser.metadata?.creationTime ? Date.parse(firebaseUser.metadata.creationTime) : Date.now(),
+        };
+
+        setCurrentUser((prev) => {
+          if (prev && prev.uid === firebaseUser.uid) {
+            return {
+              ...prev,
+              ...immediateUser,
+              role: prev.role || 'user',
+            };
+          }
+          return immediateUser;
+        });
+
+        // Background synchronization with Firestore
         try {
           const userDocRef = doc(db, 'users', firebaseUser.uid);
           const userDocSnap = await getDoc(userDocRef);
 
           let saved: string[] = ['coxs-bazar', 'sylhet-tea'];
-
           if (userDocSnap.exists()) {
             const data = userDocSnap.data();
-            saved = Array.isArray(data.saved) ? data.saved : saved;
+            if (Array.isArray(data.saved)) {
+              saved = data.saved;
+            }
           }
 
-          const userProfile = await syncFirebaseUserProfile(firebaseUser);
-
-          setCurrentUser(userProfile);
           setSavedIds(saved);
-          localStorage.setItem('discover_bd_guest_user', JSON.stringify(userProfile));
-          localStorage.setItem('discover_bd_saved', JSON.stringify(saved));
+          try {
+            localStorage.setItem('discover_bd_saved', JSON.stringify(saved));
+          } catch {}
+
+          const verifiedProfile = await syncFirebaseUserProfile(firebaseUser);
+          setCurrentUser(verifiedProfile);
+          try {
+            localStorage.setItem('discover_bd_user_session', JSON.stringify(verifiedProfile));
+          } catch {}
         } catch (e) {
-          console.error('Failed to sync user Firestore doc:', e);
+          console.warn('Failed to sync user Firestore doc, using fallback verification:', e);
+          const isVerifiedAdmin = await verifyFirebaseAdminStatus(firebaseUser);
           const fallbackUser: AppUser = {
             uid: firebaseUser.uid,
             displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Traveler',
             email: firebaseUser.email || '',
-            role: checkIsUserAdmin({ email: firebaseUser.email } as AppUser) ? 'admin' : 'user',
+            role: isVerifiedAdmin ? 'admin' : 'user',
             isAnonymous: firebaseUser.isAnonymous,
             photoURL: firebaseUser.photoURL || null,
-            createdAt: firebaseUser.metadata.creationTime ? Date.parse(firebaseUser.metadata.creationTime) : Date.now(),
+            createdAt: firebaseUser.metadata?.creationTime ? Date.parse(firebaseUser.metadata.creationTime) : Date.now(),
           };
           setCurrentUser(fallbackUser);
-          localStorage.setItem('discover_bd_guest_user', JSON.stringify(fallbackUser));
+          try {
+            localStorage.setItem('discover_bd_user_session', JSON.stringify(fallbackUser));
+          } catch {}
         }
       } else {
-        const storedGuest = localStorage.getItem('discover_bd_guest_user');
-        if (storedGuest) {
-          try {
-            const parsed = JSON.parse(storedGuest);
-            setCurrentUser(parsed);
-          } catch {
-            setCurrentUser(null);
-          }
-        } else {
-          setCurrentUser(null);
-        }
+        // User logged out from Firebase Auth
+        setCurrentUser(null);
+        try {
+          localStorage.removeItem('discover_bd_user_session');
+          localStorage.removeItem('discover_bd_guest_user');
+          localStorage.removeItem('discover_bd_saved');
+        } catch {}
       }
     });
 
@@ -836,7 +943,13 @@ function MainAppContent() {
 
   const scrollToSection = (sectionId: string) => {
     setActiveSection(sectionId);
-    if (location.pathname !== '/') {
+    if (sectionId === 'destinations') {
+      navigate('/destinations');
+    } else if (sectionId === 'news') {
+      navigate('/news');
+    } else if (sectionId === 'community') {
+      navigate('/community');
+    } else {
       navigate('/');
       setTimeout(() => {
         const element = document.getElementById(sectionId);
@@ -844,11 +957,6 @@ function MainAppContent() {
           element.scrollIntoView({ behavior: 'smooth' });
         }
       }, 50);
-    } else {
-      const element = document.getElementById(sectionId);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth' });
-      }
     }
   };
 
@@ -861,9 +969,9 @@ function MainAppContent() {
   return (
     <div className="min-h-screen bg-[#FAF8F3] text-neutral-800 flex flex-col font-sans selection:bg-[#DE9B2E]/30 selection:text-[#0A2A21]">
       {/* Scroll Progress Bar */}
-      <motion.div
-        className="fixed top-0 left-0 right-0 h-1 bg-[#DE9B2E] origin-left z-[100]"
-        style={{ scaleX }}
+      <div
+        className="fixed top-0 left-0 right-0 h-1 bg-[#DE9B2E] origin-left z-[100] transition-transform duration-75 ease-out pointer-events-none"
+        style={{ transform: `scaleX(${scrollProgress})` }}
       />
 
       {/* Header */}
@@ -873,113 +981,187 @@ function MainAppContent() {
         onOpenTripPlanner={() => handleOpenTripPlanner(true)}
         onOpenSearch={() => handleOpenSearch(true)}
         onOpenSavedModal={() => handleOpenSavedModal(true)}
-        onOpenAuth={() => handleOpenAuth(true)}
+        onOpenAuth={handleOpenAuth}
+        onOpenProfile={handleOpenProfile}
+        onOpenLogin={handleOpenLogin}
         onOpenAdmin={() => handleOpenAdmin(true)}
-        currentUser={currentUser}
+        onOpenUploadModal={() => handleOpenUpload(true)}
+        onOpenStoryModal={() => handleOpenStorySubmit(true)}
+        onOpenReportModal={() => handleOpenReport(true)}
+        currentUser={currentUser || (auth.currentUser ? {
+          uid: auth.currentUser.uid,
+          displayName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Traveler',
+          email: auth.currentUser.email || null,
+          photoURL: auth.currentUser.photoURL || null,
+          role: currentUser?.role || 'user',
+          isAnonymous: auth.currentUser.isAnonymous,
+        } : null)}
         savedCount={savedIds.length}
         activeSection={activeSection}
         onNavigate={scrollToSection}
       />
 
-      {/* Main Content Sections */}
+      {/* Dynamic Header Ad Placement (Slot 1) */}
+      <AdRenderer
+        slotConfig={adsConfig.header}
+        slotId="header"
+        language={language}
+      />
+
+      {/* Main Content Area */}
       <main className="flex-1">
-        <HeroSection
-          language={language}
-          onExploreClick={() => scrollToSection('destinations')}
-          onPlanTripClick={() => handleOpenTripPlanner(true)}
-          onSelectDestination={handleSelectDestination}
-          onSelectFestivalModal={() => {
-            const pohelaBoishakh = festivals.find((f) => f.id === 'pohela-boishakh') || festivals[0];
-            if (pohelaBoishakh) handleSelectFestival(pohelaBoishakh);
-          }}
-          coxsBazar={destinations.find((d) => d.id === 'coxs-bazar') || destinations[0]}
-          sylhet={destinations.find((d) => d.id === 'sylhet-tea') || destinations[1]}
-          paharpur={destinations.find((d) => d.id === 'paharpur') || destinations[2]}
-        />
+        {is404 ? (
+          <NotFoundPage
+            language={language}
+            resourceType={notFoundType}
+            slug={notFoundSlug}
+            onNavigateHome={() => navigate('/')}
+            onExploreDestinations={() => navigate('/destinations')}
+            onExploreNews={() => navigate('/news')}
+          />
+        ) : isAdminAccessDenied ? (
+          <AdminAccessDenied
+            language={language}
+            currentUser={currentUser}
+            onOpenAuth={() => handleOpenAuth(true)}
+            onNavigateHome={() => navigate('/')}
+          />
+        ) : selectedNewsPost && location.pathname.startsWith('/news/') ? (
+          /* Dedicated News Detail Page with SEO URL (/news/:slug) */
+          <NewsDetailPage
+            news={selectedNewsPost}
+            allNews={newsList}
+            language={language}
+            currentUser={currentUser}
+            onOpenAuthModal={() => handleOpenAuth(true)}
+            onNavigateBack={() => {
+              navigate('/news');
+              setTimeout(() => {
+                const el = document.getElementById('news');
+                if (el) {
+                  const yOffset = -90;
+                  const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                  window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+                }
+              }, 50);
+            }}
+            onSelectNews={(post) => {
+              navigate(`/news/${getNewsSlug(post, newsList)}`);
+            }}
+            articleAdConfig={adsConfig.article}
+          />
+        ) : (
+          <>
+            <HeroSection
+              language={language}
+              onExploreClick={() => scrollToSection('destinations')}
+              onPlanTripClick={() => handleOpenTripPlanner(true)}
+              onSelectDestination={handleSelectDestination}
+              onSelectFestivalModal={() => {
+                const pohelaBoishakh = festivals.find((f) => f.id === 'pohela-boishakh') || festivals[0];
+                if (pohelaBoishakh) handleSelectFestival(pohelaBoishakh);
+              }}
+              coxsBazar={destinations.find((d) => d.id === 'coxs-bazar') || destinations[0]}
+              sylhet={destinations.find((d) => d.id === 'sylhet-tea') || destinations[1]}
+              paharpur={destinations.find((d) => d.id === 'paharpur') || destinations[2]}
+            />
 
-        {/* Recent Tourist Attractions & Stories Showcase Slider */}
-        <RecentShowcaseSlider
-          destinations={destinations}
-          stories={stories}
-          language={language}
-          onSelectDestination={handleSelectDestination}
-          onSelectStory={handleSelectStory}
-          savedIds={savedIds}
-          onToggleSave={toggleSave}
-        />
+            {/* Dynamic Hero Bottom Ad Placement (Slot 2) */}
+            <AdRenderer
+              slotConfig={adsConfig.hero_bottom}
+              slotId="hero_bottom"
+              language={language}
+            />
 
-        {/* All Tourist Places Grid (480+ Places with 64-District Filter & Load More) */}
-        <DestinationsGrid
-          destinations={destinations}
-          language={language}
-          onSelectDestination={handleSelectDestination}
-          savedIds={savedIds}
-          onToggleSave={toggleSave}
-          onPlanTrip={handlePlanTripForDestination}
-          selectedDistrictFilter={selectedDistrictFilter}
-          onClearDistrictFilter={handleClearDistrictFilter}
-        />
+            {/* Recent Tourist Attractions & Stories Showcase Slider */}
+            <RecentShowcaseSlider
+              destinations={destinations}
+              stories={stories}
+              language={language}
+              onSelectDestination={handleSelectDestination}
+              onSelectStory={handleSelectStory}
+              savedIds={savedIds}
+              onToggleSave={toggleSave}
+            />
 
-        {/* Things To Do & Curated Experiences */}
-        <ThingsToDoSection
-          language={language}
-          experiences={experiences}
-          onSelectExperience={handleSelectExperience}
-          onOpenTripPlanner={() => handleOpenTripPlanner(true)}
-        />
+            {/* All Tourist Places Grid (480+ Places with In-Feed Ad) */}
+            <DestinationsGrid
+              destinations={destinations}
+              language={language}
+              onSelectDestination={handleSelectDestination}
+              savedIds={savedIds}
+              onToggleSave={toggleSave}
+              onPlanTrip={handlePlanTripForDestination}
+              selectedDistrictFilter={selectedDistrictFilter}
+              onClearDistrictFilter={handleClearDistrictFilter}
+              infeedAdConfig={adsConfig.destination_infeed}
+            />
 
-        {/* Cultural Festivals & Events */}
-        <FestivalsSection
-          language={language}
-          festivals={festivals}
-          onSelectFestival={handleSelectFestival}
-        />
+            {/* Things To Do & Curated Experiences */}
+            <ThingsToDoSection
+              language={language}
+              experiences={experiences}
+              onSelectExperience={handleSelectExperience}
+              onOpenTripPlanner={() => handleOpenTripPlanner(true)}
+            />
 
-        {/* Tourism News & User Interaction System */}
-        <NewsSection
-          language={language}
-          currentUser={currentUser}
-          onOpenAuth={() => handleOpenAuth(true)}
-        />
+            {/* Cultural Festivals & Events */}
+            <FestivalsSection
+              language={language}
+              festivals={festivals}
+              onSelectFestival={handleSelectFestival}
+            />
 
-        {/* Editorial Stories & Heritage Articles */}
-        <StoriesSection
-          language={language}
-          stories={stories}
-          onSelectStory={handleSelectStory}
-          onWriteStoryClick={() => handleOpenStorySubmit(true)}
-        />
+            {/* Tourism News & Announcements with News Ad */}
+            <NewsSection
+              language={language}
+              currentUser={currentUser}
+              onOpenAuthModal={() => handleOpenAuth(true)}
+              activeNewsPost={null}
+              onSelectNews={handleSelectNews}
+              newsAdConfig={adsConfig.news}
+            />
 
-        {/* Community Photo Gallery & ImgBB Uploads */}
-        <CommunityGallerySection
-          language={language}
-          currentUser={currentUser}
-          onOpenAuth={() => handleOpenAuth(true)}
-          posts={communityPosts}
-          onOpenUploadModal={() => handleOpenUpload(true)}
-          onOpenAdmin={() => handleOpenAdmin(true)}
-          selectedPostId={selectedCommunityPostId}
-          onSelectPost={handleSelectPost}
-          savedIds={savedIds}
-          onToggleSave={toggleSave}
-        />
+            {/* Editorial Stories & Heritage Articles */}
+            <StoriesSection
+              language={language}
+              stories={stories}
+              onSelectStory={handleSelectStory}
+              onWriteStoryClick={() => handleOpenStorySubmit(true)}
+            />
 
-        {/* 64 Districts Live Weather & Interactive Showcase */}
-        <DistrictsSection
-          destinations={destinations}
-          language={language}
-          selectedDistrict={selectedDistrictFilter}
-          onSelectDistrict={handleSelectDistrict}
-        />
+            {/* Community Photo Gallery & ImgBB Uploads */}
+            <CommunityGallerySection
+              language={language}
+              currentUser={currentUser}
+              onOpenAuth={() => handleOpenAuth(true)}
+              posts={communityPosts}
+              onOpenUploadModal={() => handleOpenUpload(true)}
+              onOpenAdmin={() => handleOpenAdmin(true)}
+              selectedPostId={selectedCommunityPostId}
+              onSelectPost={handleSelectPost}
+              savedIds={savedIds}
+              onToggleSave={toggleSave}
+            />
 
-        {/* Interactive GIS Map Section with 64 Districts */}
-        <GisMapSection
-          language={language}
-          destinations={destinations}
-          onSelectDestination={handleSelectDestination}
-          selectedDistrictFilter={selectedDistrictFilter}
-          onClearDistrictFilter={handleClearDistrictFilter}
-        />
+            {/* 64 Districts Live Weather & Interactive Showcase */}
+            <DistrictsSection
+              destinations={destinations}
+              language={language}
+              selectedDistrict={selectedDistrictFilter}
+              onSelectDistrict={handleSelectDistrict}
+            />
+
+            {/* Interactive GIS Map Section with 64 Districts */}
+            <GisMapSection
+              language={language}
+              destinations={destinations}
+              onSelectDestination={handleSelectDestination}
+              selectedDistrictFilter={selectedDistrictFilter}
+              onClearDistrictFilter={handleClearDistrictFilter}
+            />
+          </>
+        )}
       </main>
 
       {/* Footer */}
@@ -1002,7 +1184,7 @@ function MainAppContent() {
         onOpenReportModal={() => handleOpenReport(true)}
       />
 
-      {/* Modals and Overlays */}
+      {/* Destination Detail Modal */}
       <DestinationModal
         destination={selectedDestination}
         language={language}
@@ -1012,8 +1194,10 @@ function MainAppContent() {
         onPlanTrip={handlePlanTripForDestination}
         allDestinations={destinations}
         onSelectDestination={handleSelectDestination}
+        articleAdConfig={adsConfig.article}
       />
 
+      {/* Editorial Story Modal */}
       <StoryModal
         story={selectedStory}
         language={language}
@@ -1022,14 +1206,17 @@ function MainAppContent() {
         onClose={() => handleSelectStory(null)}
         isSaved={selectedStory ? savedIds.includes(selectedStory.id) : false}
         onToggleSave={toggleSave}
+        articleAdConfig={adsConfig.article}
       />
 
+      {/* Cultural Festival Modal */}
       <FestivalModal
         festival={selectedFestival}
         language={language}
         onClose={() => handleSelectFestival(null)}
       />
 
+      {/* Experience Modal */}
       <ExperienceModal
         experience={selectedExperience}
         language={language}
@@ -1040,6 +1227,7 @@ function MainAppContent() {
         }}
       />
 
+      {/* Community Post Modal */}
       {selectedCommunityPostId && (
         <PostModal
           post={
@@ -1053,9 +1241,11 @@ function MainAppContent() {
           onOpenAuth={() => handleOpenAuth(true)}
           isSaved={selectedCommunityPostId ? savedIds.includes(selectedCommunityPostId) : false}
           onToggleSave={toggleSave}
+          articleAdConfig={adsConfig.article}
         />
       )}
 
+      {/* Trip Planner Modal */}
       {isTripPlannerOpen && (
         <TripPlannerModal
           language={language}
@@ -1065,6 +1255,7 @@ function MainAppContent() {
         />
       )}
 
+      {/* Search Modal */}
       {isSearchOpen && (
         <SearchModal
           language={language}
@@ -1080,17 +1271,23 @@ function MainAppContent() {
         />
       )}
 
+      {/* Saved / Bookmarks Modal */}
       {isSavedModalOpen && (
         <SavedModal
           language={language}
-          onClose={() => handleOpenSavedModal(false)}
+          onClose={() => {
+            setIsSavedModalOpen(false);
+            if (location.pathname === '/profile') {
+              navigate('/');
+            }
+          }}
           savedIds={savedIds}
           onRemoveSave={(id) => toggleSave(id)}
           onSelectDestination={handleSelectDestination}
           onSelectStory={handleSelectStory}
           onSelectPost={handleSelectPost}
           onOpenTripPlanner={() => {
-            handleOpenSavedModal(false);
+            setIsSavedModalOpen(false);
             handleOpenTripPlanner(true);
           }}
           allDestinations={destinations}
@@ -1099,11 +1296,51 @@ function MainAppContent() {
         />
       )}
 
-      {/* Firebase Authentication Modal */}
+      {/* Firebase Authentication & Traveler Profile Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
-        onClose={() => handleOpenAuth(false)}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          if (location.pathname === '/profile') {
+            navigate('/');
+          }
+        }}
+        currentUser={currentUser || (auth.currentUser ? {
+          uid: auth.currentUser.uid,
+          displayName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Traveler',
+          email: auth.currentUser.email || null,
+          photoURL: auth.currentUser.photoURL || null,
+          role: currentUser?.role || 'user',
+          isAnonymous: auth.currentUser.isAnonymous,
+          createdAt: auth.currentUser.metadata?.creationTime ? Date.parse(auth.currentUser.metadata.creationTime) : Date.now(),
+        } : null)}
+        initialMode={authModalMode}
         language={language}
+        savedCount={savedIds.length}
+        onSetGuestUser={(guestUser) => {
+          setCurrentUser(guestUser);
+          try {
+            localStorage.setItem('discover_bd_guest_user', JSON.stringify(guestUser));
+          } catch {}
+        }}
+        onSignOutGuest={() => {
+          setCurrentUser(null);
+          try {
+            localStorage.removeItem('discover_bd_user_session');
+            localStorage.removeItem('discover_bd_guest_user');
+            localStorage.removeItem('discover_bd_saved');
+          } catch {}
+        }}
+        onOpenAdmin={() => handleOpenAdmin(true)}
+        onOpenUploadModal={() => handleOpenUpload(true)}
+        onOpenStoryModal={() => handleOpenStorySubmit(true)}
+        onOpenSavedModal={() => handleOpenSavedModal(true)}
+        onUpdateCurrentUser={(updatedUser) => {
+          setCurrentUser(updatedUser);
+          try {
+            localStorage.setItem('discover_bd_user_session', JSON.stringify(updatedUser));
+          } catch {}
+        }}
         onAuthSuccess={(user) => {
           setCurrentUser(user);
         }}
@@ -1139,27 +1376,38 @@ function MainAppContent() {
         currentUser={currentUser}
       />
 
-      {/* Comprehensive Admin Panel Modal */}
-      <AdminPanelModal
-        isOpen={isAdminOpen}
-        onClose={() => handleOpenAdmin(false)}
+      {/* Comprehensive Admin Panel Modal (Protected - only renders when admin is authenticated) */}
+      {checkIsUserAdmin(currentUser) && (
+        <AdminPanelModal
+          isOpen={isAdminOpen}
+          onClose={() => handleOpenAdmin(false)}
+          language={language}
+          currentUser={currentUser}
+          onOpenAuth={() => {
+            handleOpenAdmin(false);
+            handleOpenAuth(true);
+          }}
+          destinations={destinations}
+          experiences={experiences}
+          festivals={festivals}
+          stories={stories}
+          communityPosts={communityPosts}
+          onUpdateDestinations={handleUpdateDestinations}
+          onUpdateExperiences={handleUpdateExperiences}
+          onUpdateFestivals={handleUpdateFestivals}
+          onUpdateStories={handleUpdateStories}
+          onUpdateCommunityPosts={handleUpdateCommunityPosts}
+          onResetAllData={handleResetAllData}
+          adsConfig={adsConfig}
+          onUpdateAdsConfig={setAdsConfig}
+        />
+      )}
+
+      {/* Dynamic Mobile Sticky Bottom Ad (Slot 6 - Mobile Only with Close Button) */}
+      <AdRenderer
+        slotConfig={adsConfig.mobile_sticky}
+        slotId="mobile_sticky"
         language={language}
-        currentUser={currentUser}
-        onOpenAuth={() => {
-          handleOpenAdmin(false);
-          handleOpenAuth(true);
-        }}
-        destinations={destinations}
-        experiences={experiences}
-        festivals={festivals}
-        stories={stories}
-        communityPosts={communityPosts}
-        onUpdateDestinations={handleUpdateDestinations}
-        onUpdateExperiences={handleUpdateExperiences}
-        onUpdateFestivals={handleUpdateFestivals}
-        onUpdateStories={handleUpdateStories}
-        onUpdateCommunityPosts={handleUpdateCommunityPosts}
-        onResetAllData={handleResetAllData}
       />
 
       {/* Scroll to Top floating action button */}

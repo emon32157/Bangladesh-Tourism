@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Language, AppUser } from '../types';
 import { checkIsUserAdmin } from '../lib/userRoles';
+import { auth } from '../lib/firebase';
 import {
   Search,
   Bookmark,
@@ -11,7 +12,6 @@ import {
   Flag,
   Camera,
   PenTool,
-  Shield,
   ShieldCheck,
   ChevronDown,
 } from 'lucide-react';
@@ -26,7 +26,9 @@ interface HeaderProps {
   savedCount: number;
   onOpenSavedModal: () => void;
   currentUser: AppUser | null;
-  onOpenAuth: () => void;
+  onOpenAuth: (mode?: 'login' | 'register' | 'profile' | 'forgot_password') => void;
+  onOpenProfile?: () => void;
+  onOpenLogin?: () => void;
   onOpenUploadModal: () => void;
   onOpenStoryModal?: () => void;
   onOpenReportModal?: () => void;
@@ -44,6 +46,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSavedModal,
   currentUser,
   onOpenAuth,
+  onOpenProfile,
+  onOpenLogin,
   onOpenUploadModal,
   onOpenStoryModal,
   onOpenReportModal,
@@ -52,7 +56,44 @@ export const Header: React.FC<HeaderProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const accountDropdownRef = useRef<HTMLDivElement>(null);
-  const isUserAdmin = checkIsUserAdmin(currentUser);
+
+  // Single source of truth: check both currentUser prop and Firebase Auth instance directly
+  const activeUser: AppUser | null = currentUser || (auth.currentUser ? {
+    uid: auth.currentUser.uid,
+    displayName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Traveler',
+    email: auth.currentUser.email || null,
+    photoURL: auth.currentUser.photoURL || null,
+    role: currentUser?.role || 'user',
+    isAnonymous: auth.currentUser.isAnonymous,
+  } : null);
+
+  const isLoggedIn = Boolean(activeUser || auth.currentUser);
+  const isUserAdmin = checkIsUserAdmin(activeUser);
+
+  // Open profile interface directly if logged in, or login modal if logged out
+  const openProfile = () => {
+    if (onOpenProfile) {
+      onOpenProfile();
+    } else {
+      onOpenAuth('profile');
+    }
+  };
+
+  const openLogin = () => {
+    if (onOpenLogin) {
+      onOpenLogin();
+    } else {
+      onOpenAuth('login');
+    }
+  };
+
+  const handleProfileClick = () => {
+    if (isLoggedIn) {
+      openProfile();
+    } else {
+      openLogin();
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -146,19 +187,19 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             id="nav-account-btn"
             onClick={() => {
-              if (currentUser) {
+              if (isLoggedIn) {
                 setShowAccountDropdown((prev) => !prev);
               } else {
-                onOpenAuth();
+                openLogin();
               }
             }}
             className={`flex items-center gap-1.5 pb-1 transition-colors cursor-pointer whitespace-nowrap ${
               showAccountDropdown ? 'text-[#0A2A21] font-extrabold' : 'text-[#4B554E] hover:text-[#0A2A21]'
             }`}
           >
-            {currentUser?.photoURL ? (
+            {activeUser?.photoURL ? (
               <img
-                src={currentUser.photoURL}
+                src={activeUser.photoURL}
                 alt="Avatar"
                 className="w-4 h-4 rounded-full object-cover border border-[#DE9B2E]"
               />
@@ -166,8 +207,8 @@ export const Header: React.FC<HeaderProps> = ({
               <UserIcon className="w-3.5 h-3.5 text-[#DE9B2E]" />
             )}
             <span className="max-w-[110px] truncate">
-              {currentUser
-                ? currentUser.displayName?.split(' ')[0] || (language === 'en' ? 'Account' : 'অ্যাকাউন্ট')
+              {isLoggedIn
+                ? activeUser?.displayName?.split(' ')[0] || (language === 'en' ? 'Account' : 'অ্যাকাউন্ট')
                 : language === 'en'
                 ? 'Sign In'
                 : 'লগইন'}
@@ -177,29 +218,36 @@ export const Header: React.FC<HeaderProps> = ({
                 Admin
               </span>
             )}
-            {currentUser && <ChevronDown className={`w-3 h-3 text-[#6B756E] transition-transform ${showAccountDropdown ? 'rotate-180' : ''}`} />}
+            {isLoggedIn && <ChevronDown className={`w-3 h-3 text-[#6B756E] transition-transform ${showAccountDropdown ? 'rotate-180' : ''}`} />}
           </button>
 
           {/* Account Dropdown for Logged In User */}
-          {showAccountDropdown && currentUser && (
+          {showAccountDropdown && isLoggedIn && (
             <div className="absolute right-0 mt-2.5 w-72 bg-white rounded-2xl shadow-xl border border-[#D8D0BC] p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
               {/* User Identity Header */}
-              <div className="p-2.5 bg-[#FAF7F0] border border-[#E2DCce] rounded-xl flex items-center gap-3">
-                {currentUser.photoURL ? (
+              <div
+                onClick={() => {
+                  setShowAccountDropdown(false);
+                  openProfile();
+                }}
+                className="p-2.5 bg-[#FAF7F0] hover:bg-[#F2ECE0] border border-[#E2DCce] rounded-xl flex items-center gap-3 cursor-pointer transition-colors"
+                title={language === 'en' ? 'Click to manage profile' : 'প্রোফাইল দেখতে ক্লিক করুন'}
+              >
+                {activeUser?.photoURL ? (
                   <img
-                    src={currentUser.photoURL}
+                    src={activeUser.photoURL}
                     alt="Avatar"
                     className="w-9 h-9 rounded-full object-cover border border-[#DE9B2E] shrink-0"
                   />
                 ) : (
                   <div className="w-9 h-9 rounded-full bg-[#0F3B2E] text-[#DE9B2E] flex items-center justify-center font-bold text-sm shrink-0">
-                    {currentUser.displayName?.[0] || 'U'}
+                    {activeUser?.displayName?.[0] || 'U'}
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-xs text-[#0A2A21] truncate">
-                      {currentUser.displayName || (language === 'en' ? 'Explorer' : 'ভ্রমণকারী')}
+                      {activeUser?.displayName || (language === 'en' ? 'Explorer' : 'ভ্রমণকারী')}
                     </span>
                     {isUserAdmin && (
                       <span className="px-1.5 py-0.2 bg-[#0F3B2E] text-[#DE9B2E] text-[8px] font-bold rounded-full">
@@ -208,7 +256,7 @@ export const Header: React.FC<HeaderProps> = ({
                     )}
                   </div>
                   <p className="text-[10px] text-[#6B756E] truncate">
-                    {currentUser.email || (currentUser.isAnonymous ? 'Guest User' : 'Authenticated')}
+                    {activeUser?.email || (activeUser?.isAnonymous ? 'Guest User' : 'Authenticated')}
                   </p>
                 </div>
               </div>
@@ -300,12 +348,12 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 )}
 
-                {/* Profile & Account Details */}
+                {/* Profile & Account Details (Strictly opens Profile / Account interface, NEVER login modal) */}
                 <button
                   id="account-menu-profile-btn"
                   onClick={() => {
                     setShowAccountDropdown(false);
-                    onOpenAuth();
+                    openProfile();
                   }}
                   className="w-full flex items-center gap-2.5 p-2 rounded-xl hover:bg-[#FAF7F0] text-left transition-colors cursor-pointer text-xs font-bold text-[#4B554E] border-t border-[#D8D0BC]/40 mt-1 pt-2"
                 >
@@ -357,6 +405,28 @@ export const Header: React.FC<HeaderProps> = ({
           className="p-2 bg-white rounded-full border border-[#D8D0BC] shadow-xs hover:bg-[#F0EBE0] text-[#0A2A21] transition-all hover:scale-105 cursor-pointer"
         >
           <Search className="w-4 h-4 text-[#0A2A21]" />
+        </button>
+
+        {/* User Profile / Account Quick Action Button in Header Bar */}
+        <button
+          id="header-user-profile-btn"
+          onClick={handleProfileClick}
+          aria-label={isLoggedIn ? (language === 'en' ? 'Manage Account & Profile' : 'অ্যাকাউন্ট ও প্রোফাইল') : (language === 'en' ? 'Sign In / Register' : 'সাইন ইন / রেজিস্ট্রেশন')}
+          title={isLoggedIn ? (language === 'en' ? 'My Account / Profile' : 'আমার অ্যাকাউন্ট ও প্রোফাইল') : (language === 'en' ? 'Sign In / Register' : 'সাইন ইন বা অ্যাকাউন্ট তৈরি')}
+          className="p-2 bg-white rounded-full border border-[#D8D0BC] shadow-xs hover:bg-[#F0EBE0] text-[#0A2A21] transition-all hover:scale-105 cursor-pointer relative"
+        >
+          {activeUser?.photoURL ? (
+            <img
+              src={activeUser.photoURL}
+              alt="Avatar"
+              className="w-4 h-4 rounded-full object-cover border border-[#DE9B2E]"
+            />
+          ) : (
+            <UserIcon className={`w-4 h-4 ${isLoggedIn ? 'text-[#DE9B2E]' : 'text-[#0A2A21]'}`} />
+          )}
+          {isLoggedIn && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full border border-white" />
+          )}
         </button>
 
         {/* Plan Trip CTA button */}
@@ -419,14 +489,14 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {/* Account Section in Mobile Menu */}
-            {!currentUser ? (
+            {!isLoggedIn ? (
               <button
                 id="mobile-sign-in-btn"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  onOpenAuth();
+                  openLogin();
                 }}
-                className="flex items-center justify-between text-left py-2.5 px-3.5 rounded-xl bg-[#0F3B2E] text-white hover:bg-[#0A2A21] transition-colors shadow-xs"
+                className="flex items-center justify-between text-left py-2.5 px-3.5 rounded-xl bg-[#0F3B2E] text-white hover:bg-[#0A2A21] transition-colors shadow-xs cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <UserIcon className="w-4 h-4 text-[#DE9B2E]" />
@@ -439,22 +509,28 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <div className="p-3 bg-white border border-[#D8D0BC] rounded-2xl shadow-xs space-y-2.5">
                 <div className="flex items-center justify-between pb-2 border-b border-[#D8D0BC]/60">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {currentUser?.photoURL ? (
+                  <div
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      openProfile();
+                    }}
+                    className="flex items-center gap-2.5 min-w-0 cursor-pointer"
+                  >
+                    {activeUser?.photoURL ? (
                       <img
-                        src={currentUser.photoURL}
+                        src={activeUser.photoURL}
                         alt="Avatar"
                         className="w-8 h-8 rounded-full object-cover border border-[#DE9B2E] shrink-0"
                       />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-[#0F3B2E] text-[#DE9B2E] flex items-center justify-center font-bold text-xs shrink-0">
-                        {currentUser.displayName?.[0] || 'U'}
+                        {activeUser?.displayName?.[0] || 'U'}
                       </div>
                     )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-[#0A2A21] truncate max-w-[130px]">
-                          {currentUser.displayName || (language === 'en' ? 'Explorer' : 'ভ্রমণকারী')}
+                          {activeUser?.displayName || (language === 'en' ? 'Explorer' : 'ভ্রমণকারী')}
                         </span>
                         {isUserAdmin && (
                           <span className="px-1.5 py-0.2 bg-[#0F3B2E] text-[#DE9B2E] text-[8px] font-bold rounded-full shrink-0">
@@ -463,16 +539,16 @@ export const Header: React.FC<HeaderProps> = ({
                         )}
                       </div>
                       <div className="text-[10px] text-[#6B756E] truncate max-w-[150px]">
-                        {currentUser.email || 'Authenticated'}
+                        {activeUser?.email || 'Authenticated'}
                       </div>
                     </div>
                   </div>
                   <button
                     onClick={() => {
                       setMobileMenuOpen(false);
-                      onOpenAuth();
+                      openProfile();
                     }}
-                    className="text-[11px] font-bold text-[#0F3B2E] hover:underline shrink-0"
+                    className="text-[11px] font-bold text-[#0F3B2E] hover:underline shrink-0 cursor-pointer"
                   >
                     {language === 'en' ? 'Profile' : 'প্রোফাইল'}
                   </button>
@@ -546,7 +622,7 @@ export const Header: React.FC<HeaderProps> = ({
                 setMobileMenuOpen(false);
                 onOpenTripPlanner();
               }}
-              className="w-full py-2.5 bg-[#0F3B2E] text-white rounded-full font-bold text-xs uppercase tracking-wider text-center flex items-center justify-center gap-2"
+              className="w-full py-2.5 bg-[#0F3B2E] text-white rounded-full font-bold text-xs uppercase tracking-wider text-center flex items-center justify-center gap-2 cursor-pointer"
             >
               <Compass className="w-4 h-4 text-[#DE9B2E]" />
               {language === 'en' ? 'Custom Itinerary Planner' : 'ভ্রমণ পরিকল্পনা'}
@@ -557,4 +633,3 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
-

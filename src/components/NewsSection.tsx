@@ -5,7 +5,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { NewsPost, NewsComment, Language, AppUser } from '../types';
+import { NewsPost, NewsComment, Language, AppUser, AdSlotConfig } from '../types';
+import { AdRenderer } from './AdRenderer';
 import {
   subscribeToNewsPosts,
   toggleNewsLike,
@@ -14,6 +15,7 @@ import {
   deleteNewsComment,
 } from '../lib/newsService';
 import { checkIsUserAdmin } from '../lib/userRoles';
+import { getNewsSlug } from '../lib/slugs';
 import {
   Newspaper,
   Heart,
@@ -37,6 +39,9 @@ interface NewsSectionProps {
   currentUser: AppUser | null;
   onOpenAuthModal?: () => void;
   isStandalonePage?: boolean;
+  activeNewsPost?: NewsPost | null;
+  onSelectNews?: (post: NewsPost | null) => void;
+  newsAdConfig?: AdSlotConfig | null;
 }
 
 export const NewsSection: React.FC<NewsSectionProps> = ({
@@ -44,11 +49,24 @@ export const NewsSection: React.FC<NewsSectionProps> = ({
   currentUser,
   onOpenAuthModal,
   isStandalonePage = false,
+  activeNewsPost = null,
+  onSelectNews,
+  newsAdConfig,
 }) => {
   const [newsList, setNewsList] = useState<NewsPost[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('all');
-  const [selectedNews, setSelectedNews] = useState<NewsPost | null>(null);
+  const [internalSelectedNews, setInternalSelectedNews] = useState<NewsPost | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const selectedNews = activeNewsPost !== undefined && activeNewsPost !== null ? activeNewsPost : internalSelectedNews;
+
+  const handleSelectNewsItem = (post: NewsPost | null) => {
+    if (onSelectNews) {
+      onSelectNews(post);
+    } else {
+      setInternalSelectedNews(post);
+    }
+  };
 
   // Active user identification
   const currentUserId = currentUser?.uid || 'guest_visitor';
@@ -61,11 +79,11 @@ export const NewsSection: React.FC<NewsSectionProps> = ({
       // Sync selected news if open
       if (selectedNews) {
         const updated = posts.find((p) => p.id === selectedNews.id);
-        if (updated) setSelectedNews(updated);
+        if (updated && !activeNewsPost) setInternalSelectedNews(updated);
       }
     });
     return unsub;
-  }, [selectedNews?.id]);
+  }, [selectedNews?.id, activeNewsPost]);
 
   const categories = [
     { id: 'all', en: 'All Announcements', bn: 'সকল সংবাদ ও বিজ্ঞপ্তি' },
@@ -84,12 +102,17 @@ export const NewsSection: React.FC<NewsSectionProps> = ({
 
   const handleLike = async (post: NewsPost, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    await toggleNewsLike(post.id, currentUserId);
+    try {
+      await toggleNewsLike(post.id, currentUserId);
+    } catch (err) {
+      console.warn('News like sync notice:', err);
+    }
   };
 
   const handleShare = (post: NewsPost, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const shareUrl = `${window.location.origin}/news?id=${post.id}`;
+    const slug = getNewsSlug(post, newsList);
+    const shareUrl = `${window.location.origin}/news/${slug}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(shareUrl);
       setCopiedId(post.id);
@@ -140,7 +163,7 @@ export const NewsSection: React.FC<NewsSectionProps> = ({
         </div>
 
         {/* Categories Bar */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-8 scrollbar-none">
+        <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-6 scrollbar-none">
           {categories.map((cat) => {
             const isActive = activeCategory === cat.id;
             return (
@@ -160,6 +183,17 @@ export const NewsSection: React.FC<NewsSectionProps> = ({
           })}
         </div>
 
+        {/* Dynamic News Ad Placement (Slot 4) */}
+        {newsAdConfig && (
+          <div className="mb-8">
+            <AdRenderer
+              slotConfig={newsAdConfig}
+              slotId="news"
+              language={language}
+            />
+          </div>
+        )}
+
         {/* News Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
           {filteredNews.map((post) => {
@@ -170,7 +204,7 @@ export const NewsSection: React.FC<NewsSectionProps> = ({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-white rounded-3xl border border-[#D8D0BC] overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col group cursor-pointer"
-                onClick={() => setSelectedNews(post)}
+                onClick={() => handleSelectNewsItem(post)}
               >
                 {/* Image & Badge */}
                 <div className="relative h-48 sm:h-56 overflow-hidden">
@@ -285,19 +319,21 @@ export const NewsSection: React.FC<NewsSectionProps> = ({
         )}
       </div>
 
-      {/* Modal for Full Article & Interactive Comments */}
-      <AnimatePresence>
-        {selectedNews && (
-          <NewsDetailModal
-            post={selectedNews}
-            onClose={() => setSelectedNews(null)}
-            language={language}
-            currentUser={currentUser}
-            isAdmin={isAdmin}
-            onLike={() => handleLike(selectedNews)}
-          />
-        )}
-      </AnimatePresence>
+      {/* Modal for Full Article & Interactive Comments (Only if onSelectNews is not provided) */}
+      {!onSelectNews && (
+        <AnimatePresence>
+          {selectedNews && (
+            <NewsDetailModal
+              post={selectedNews}
+              onClose={() => handleSelectNewsItem(null)}
+              language={language}
+              currentUser={currentUser}
+              isAdmin={isAdmin}
+              onLike={() => handleLike(selectedNews)}
+            />
+          )}
+        </AnimatePresence>
+      )}
     </section>
   );
 };

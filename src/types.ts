@@ -249,4 +249,43 @@ export interface NewsPost {
   pinned?: boolean;
 }
 
+// ==================== Dynamic Ads Management System Types ====================
+export type AdSlotId =
+  | 'header'
+  | 'hero_bottom'
+  | 'destination_infeed'
+  | 'news'
+  | 'article'
+  | 'mobile_sticky';
+
+export type AdType = 'adsense' | 'adsterra' | 'affiliate';
+
+export type AdDeviceTarget = 'all' | 'desktop' | 'mobile';
+
+export interface AdSlotConfig {
+  id: AdSlotId;
+  nameEn: string;
+  nameBn: string;
+  descriptionEn: string;
+  descriptionBn: string;
+  enabled: boolean;
+  adType: AdType;
+  // Code snippet for Google AdSense or Adsterra
+  code: string;
+  // Affiliate banner details
+  affiliateImage: string;
+  affiliateLink: string;
+  affiliateAlt?: string;
+  affiliateNewTab?: boolean;
+  // Targeting & Layout Options
+  targetDevice: AdDeviceTarget; // 'all' | 'desktop' | 'mobile'
+  position?: 'top' | 'middle' | 'bottom' | 'default';
+  customLabelEn?: string;
+  customLabelBn?: string;
+  updatedAt?: number;
+  updatedBy?: string;
+}
+
+export type AllAdsConfig = Record<AdSlotId, AdSlotConfig>;
+
 

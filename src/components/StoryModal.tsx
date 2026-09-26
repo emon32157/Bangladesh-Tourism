@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { EditorialStory, Language, AppUser } from '../types';
+import { EditorialStory, Language, AppUser, AdSlotConfig } from '../types';
 import {
   X,
   Clock,
@@ -19,6 +19,7 @@ import {
 import { SocialInteractionBox } from './SocialInteractionBox';
 import { VideoPlayer } from './VideoPlayer';
 import { copyDirectLink } from '../lib/urlSync';
+import { AdRenderer } from './AdRenderer';
 
 interface StoryModalProps {
   story: EditorialStory | null;
@@ -28,6 +29,7 @@ interface StoryModalProps {
   onOpenAuth: () => void;
   isSaved?: boolean;
   onToggleSave?: (id: string, e?: React.MouseEvent) => void;
+  articleAdConfig?: AdSlotConfig | null;
 }
 
 export const StoryModal: React.FC<StoryModalProps> = ({
@@ -38,6 +40,7 @@ export const StoryModal: React.FC<StoryModalProps> = ({
   onOpenAuth,
   isSaved = false,
   onToggleSave,
+  articleAdConfig,
 }) => {
   const [copied, setCopied] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -264,6 +267,17 @@ export const StoryModal: React.FC<StoryModalProps> = ({
               "{story.pullQuote}"
             </p>
           </div>
+
+          {/* Dynamic Article / Post Ad Placement (Slot 5) */}
+          {articleAdConfig && (
+            <div className="my-4">
+              <AdRenderer
+                slotConfig={articleAdConfig}
+                slotId="article"
+                language={language}
+              />
+            </div>
+          )}
 
           {/* Related Video Documentary & Tour */}
           {story.videoUrl && (

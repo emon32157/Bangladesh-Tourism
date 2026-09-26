@@ -4,7 +4,7 @@
  */
 
 import { Destination, EditorialStory, Experience, Festival, Language } from '../types';
-import { getDestinationSlug, getStorySlug, getFestivalSlug, getExperienceSlug, getDistrictSlug } from './slugs';
+import { getDestinationSlug, getStorySlug, getFestivalSlug, getExperienceSlug, getDistrictSlug, getNewsSlug } from './slugs';
 
 export const SITE_URL = 'https://bdtourismboard.netlify.app';
 export const SITE_NAME = 'Bangladesh Tourism Board';
@@ -452,4 +452,47 @@ export function updateSectionSeo(section: string, language: Language = 'en') {
   setMetaTag("meta[property='og:url']", 'property', 'og:url', canonicalUrl);
   setCanonical(canonicalUrl);
   setDynamicSchema(null);
+}
+
+/**
+ * Updates SEO tags and JSON-LD schema for a specific News post
+ */
+export function updateNewsSeo(news: { id: string; title: string; titleBn?: string; summary?: string; summaryBn?: string; image?: string; createdAt?: number }, language: Language) {
+  if (typeof document === 'undefined') return;
+
+  const title = language === 'en' ? news.title : (news.titleBn || news.title);
+  const pageTitle = `${title} | Tourism News | ${SITE_NAME}`;
+  const desc = language === 'en' ? (news.summary || news.title) : (news.summaryBn || news.summary || news.title);
+  const slug = getNewsSlug(news as any);
+  const canonicalUrl = `${SITE_URL}/news/${slug}`;
+  const imageUrl = news.image || DEFAULT_IMAGE;
+
+  document.title = pageTitle;
+  document.documentElement.lang = language;
+
+  setMetaTag("meta[name='description']", 'name', 'description', desc);
+  setMetaTag("meta[property='og:title']", 'property', 'og:title', pageTitle);
+  setMetaTag("meta[property='og:description']", 'property', 'og:description', desc);
+  setMetaTag("meta[property='og:image']", 'property', 'og:image', imageUrl);
+  setMetaTag("meta[property='og:url']", 'property', 'og:url', canonicalUrl);
+  setMetaTag("meta[property='og:type']", 'property', 'og:type', 'article');
+  setCanonical(canonicalUrl);
+
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: title,
+    description: desc,
+    image: [imageUrl],
+    datePublished: news.createdAt ? new Date(news.createdAt).toISOString() : new Date().toISOString(),
+    publisher: {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${SITE_URL}/icon.svg`,
+      },
+    },
+  };
+  setDynamicSchema(schema);
 }

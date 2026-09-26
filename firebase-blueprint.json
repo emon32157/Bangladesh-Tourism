@@ -23,9 +23,10 @@
       "properties": {
         "uid": { "type": "string", "maxLength": 128 },
         "email": { "type": "string", "maxLength": 256 },
+        "role": { "type": "string", "enum": ["admin"] },
         "assignedAt": { "type": "number" }
       },
-      "required": ["uid"]
+      "required": ["uid", "role"]
     },
     "Destination": {
       "title": "Destination",
@@ -146,6 +147,69 @@
         "createdAt": { "type": "number" }
       },
       "required": ["id", "type", "description", "createdAt"]
+    },
+    "NewsPost": {
+      "title": "NewsPost",
+      "description": "Official tourism board news and announcements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "titleBn": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "maxLength": 64 },
+        "image": { "type": "string", "maxLength": 2048 },
+        "summary": { "type": "string", "maxLength": 1000 },
+        "content": { "type": "string", "maxLength": 10000 },
+        "authorName": { "type": "string", "maxLength": 128 },
+        "authorRole": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "number" },
+        "likesCount": { "type": "number" },
+        "commentsCount": { "type": "number" },
+        "pinned": { "type": "boolean" }
+      },
+      "required": ["id", "title", "content", "createdAt"]
+    },
+    "NewsComment": {
+      "title": "NewsComment",
+      "description": "Comments on news announcements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "newsId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 128 },
+        "text": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "newsId", "userId", "text", "createdAt"]
+    },
+    "SocialComment": {
+      "title": "SocialComment",
+      "description": "User comments on stories and community posts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "enum": ["post", "story"] },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 128 },
+        "text": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "number" },
+        "likesCount": { "type": "number" }
+      },
+      "required": ["id", "targetId", "targetType", "userId", "text", "createdAt"]
+    },
+    "SavedItem": {
+      "title": "SavedItem",
+      "description": "User saved bookmarks and wishlists",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "targetId", "createdAt"]
     }
   },
   "firestore": {
@@ -184,6 +248,22 @@
     "/user_reports/{reportId}": {
       "schema": "UserReport",
       "description": "User error reports and content suggestions"
+    },
+    "/news_posts/{newsId}": {
+      "schema": "NewsPost",
+      "description": "Official tourism news and announcements"
+    },
+    "/news_comments/{commentId}": {
+      "schema": "NewsComment",
+      "description": "Comments on news posts"
+    },
+    "/social_comments/{commentId}": {
+      "schema": "SocialComment",
+      "description": "Comments on community posts and stories"
+    },
+    "/saved_items/{savedId}": {
+      "schema": "SavedItem",
+      "description": "User saved items"
     }
   }
 }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Destination, DestinationCategory, Language } from '../types';
+import { Destination, DestinationCategory, Language, AdSlotConfig } from '../types';
 import { Bookmark, Star, ArrowRight, Clock, MapPin, Sparkles, Eye, ChevronDown, ChevronUp, Video, X, Compass, Filter } from 'lucide-react';
 import { getCanonicalDistrict, isDestinationInDistrict } from '../lib/districtMatcher';
+import { AdRenderer } from './AdRenderer';
 
 interface DestinationsGridProps {
   destinations: Destination[];
@@ -13,6 +14,7 @@ interface DestinationsGridProps {
   onPlanTrip?: (dest: Destination) => void;
   selectedDistrictFilter?: string | null;
   onClearDistrictFilter?: () => void;
+  infeedAdConfig?: AdSlotConfig | null;
 }
 
 export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
@@ -24,6 +26,7 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
   onPlanTrip,
   selectedDistrictFilter,
   onClearDistrictFilter,
+  infeedAdConfig,
 }) => {
   const PAGE_SIZE = 6;
   const [activeCategory, setActiveCategory] = useState<DestinationCategory>('all');
@@ -334,21 +337,30 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
             {displayedDestinations.map((dest, idx) => {
               const isSaved = savedIds.includes(dest.id);
               return (
-                <motion.div
-                  key={dest.id}
-                  id={`destination-card-${dest.id}`}
-                  initial={{ opacity: 0, y: 30, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{
-                    duration: 0.45,
-                    delay: (idx % 4) * 0.06,
-                    ease: [0.22, 1, 0.36, 1],
-                  }}
-                  whileHover={{ y: -6, transition: { duration: 0.2 } }}
-                  onClick={() => onSelectDestination(dest)}
-                  className="bg-white rounded-2xl sm:rounded-[32px] border border-[#D8D0BC] overflow-hidden shadow-xs hover:shadow-xl hover:border-[#DE9B2E]/60 transition-all duration-300 flex flex-col group cursor-pointer"
-                >
+                <React.Fragment key={dest.id}>
+                  {infeedAdConfig && infeedAdConfig.enabled && idx === 4 && (
+                    <div className="col-span-2 my-2 w-full">
+                      <AdRenderer
+                        slotConfig={infeedAdConfig}
+                        slotId="destination_infeed"
+                        language={language}
+                      />
+                    </div>
+                  )}
+                  <motion.div
+                    id={`destination-card-${dest.id}`}
+                    initial={{ opacity: 0, y: 30, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{
+                      duration: 0.45,
+                      delay: (idx % 4) * 0.06,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                    whileHover={{ y: -6, transition: { duration: 0.2 } }}
+                    onClick={() => onSelectDestination(dest)}
+                    className="bg-white rounded-2xl sm:rounded-[32px] border border-[#D8D0BC] overflow-hidden shadow-xs hover:shadow-xl hover:border-[#DE9B2E]/60 transition-all duration-300 flex flex-col group cursor-pointer"
+                  >
                   {/* Image Container with Overlay */}
                   <div className="relative h-40 sm:h-56 md:h-64 lg:h-72 overflow-hidden bg-neutral-100">
                     <img
@@ -447,8 +459,9 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({
                     </div>
                   </div>
                 </motion.div>
-              );
-            })}
+              </React.Fragment>
+            );
+          })}
           </AnimatePresence>
         </div>
 
